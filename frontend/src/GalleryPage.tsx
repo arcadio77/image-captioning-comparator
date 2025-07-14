@@ -55,15 +55,6 @@ function GalleryPage() {
         }
     }, [models, selectedModel, setSelectedModel]);
 
-    const simulateCaptionGeneration = (file: File, modelName: string) => {
-        return new Promise<string>(resolve => {
-            setTimeout(() => {
-                const randomCaption = `To jest opis dla zdjęcia "${file.name}" wygenerowany przez model ${modelName}.`;
-                resolve(randomCaption);
-            }, 100 + Math.random() * 1500);
-        });
-    };
-
     const [generatingCaptions, setGeneratingCaptions] = useState(false);
 
     useEffect(() => {
@@ -76,9 +67,15 @@ function GalleryPage() {
             setGeneratingCaptions(true);
             for (const img of images) {
                 const existingCaption = img.captions.find(c => c.model === selectedModel);
+                console.log(selectedModel);
                 if (!existingCaption) {
-                    const caption = await simulateCaptionGeneration(img.file, selectedModel);
-                    addCaptionToImage(img.file, selectedModel, caption);
+                    const caption = img.captions.find(c => c.model === selectedModel);
+                    console.log(caption);
+                    const captionText = caption?.text;
+                    console.log(captionText);
+                    if (captionText != null) {
+                        addCaptionToImage(img.file, selectedModel, captionText);
+                    }
                 }
             }
             setGeneratingCaptions(false);
@@ -162,7 +159,7 @@ function GalleryPage() {
                                 </Typography>
                                 <Typography variant="body2">
                                     {selectedModel
-                                        ? image.captions.find(c => c.model === selectedModel)?.text || 'Generowanie opisu...'
+                                        ? image.captions.find(c => c.model === selectedModel)?.text || 'Brak opisu'
                                         : 'Wybierz model, aby zobaczyć opis.'}
                                 </Typography>
                             </CardContent>

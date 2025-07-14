@@ -60,12 +60,20 @@ function App() {
 
         const formData = new FormData();
 
-        images.forEach((img, index) => {
+        const imageIds = images.map(img => img.file.name + '_' + img.file.size);
+
+        images.forEach((img) => {
             formData.append('files', img.file);
-            formData.append('ids', img.file.name);
         });
 
+        formData.append('ids', imageIds.join(','));
         formData.append('models', models.join(','));
+
+        console.log(formData);
+
+        for (const pair of formData.entries()) {
+            console.log(`${pair[0]}, ${pair[1]}`);
+        }
 
         try {
             const response = await axios.post(`${VITE_BASE_URL}upload`, formData, {
@@ -76,12 +84,19 @@ function App() {
 
             console.log('Upload successful:', response.data);
 
-            response.data.results.forEach((result: any) => {
-                if (result.captions) {
-                    Object.keys(result.captions).forEach(model => {
-                        const imageFile = images.find(img => img.file.name === result.id)?.file;
-                        if (imageFile) {
-                            addCaptionToImage(imageFile, model, result.captions[model]);
+            // Iterate over each image's results
+            response.data.results.forEach((imageResult: any) => {
+                // Find the original image file using the ID (filename in this case)
+                // Use the same logic for ID generation here as when appending to formData
+                const originalImageFile = images.find(
+                    img => (img.file.name + '_' + img.file.size) === imageResult.id
+                )?.file;
+
+
+                if (originalImageFile && imageResult.results) {
+                    imageResult.results.forEach((captionResult: any) => {
+                        if (captionResult.model && captionResult.caption) {
+                            addCaptionToImage(originalImageFile, captionResult.model, captionResult.caption);
                         }
                     });
                 }
@@ -182,8 +197,6 @@ function App() {
             </Box>
 
             <Grid
-                item
-                xs={12}
                 sx = {{
                     mt: 2,
                     width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
