@@ -50,7 +50,6 @@ function App() {
         }
     };
 
-    // Make handleSend an async function
     const handleSend = async () => {
         if (images.length === 0 || models.length === 0) {
             alert("Proszę dodać zdjęcia i modele przed wysłaniem!");
@@ -59,28 +58,16 @@ function App() {
 
         alert(`Wysyłam ${images.length} zdjęć i ${models.length} modeli...`);
 
-        // Create a FormData object to send multipart/form-data
         const formData = new FormData();
 
-        // Append each image file
         images.forEach((img, index) => {
-            formData.append('files', img.file); // 'files' must match your FastAPI parameter name
-            formData.append('ids', img.file.name + img.file.size); // Generate a unique ID for each file
-                                                                   // or use a more robust ID if you have one in context
+            formData.append('files', img.file);
+            formData.append('ids', img.file.name);
         });
 
-        // Append each model name
-        // FastAPI expects a list, so you can append each model name separately
-        // or send as a single comma-separated string if your backend handles it that way
-        // Given your backend code: `models = models[0].split(",")`, it expects a single string.
-        // So, we'll send it as one comma-separated string for 'models'.
         formData.append('models', models.join(','));
 
-
         try {
-            // Send the data using axios.put (or axios.post, depending on your backend route)
-            // The 'Content-Type': 'multipart/form-data' header is usually set automatically by browsers
-            // when you pass a FormData object to axios, but explicitly setting it doesn't hurt.
             const response = await axios.post(`${VITE_BASE_URL}upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -89,24 +76,16 @@ function App() {
 
             console.log('Upload successful:', response.data);
 
-            // Assuming the backend returns the processed results, you might want to update your context
-            // or perform further actions based on `response.data`.
-            // For now, we'll stick to your existing logic for adding captions locally (if still needed)
-            // and navigating to the gallery.
-            // If backend handles all captioning, you might remove the following loop.
-
-            // If backend does the captioning, you might set captions here from `response.data`
-            // For example:
-            // response.data.results.forEach((result: any) => {
-            //     if (result.captions) {
-            //         Object.keys(result.captions).forEach(model => {
-            //             const imageFile = images.find(img => img.file.name === result.id)?.file; // You'd need to map IDs to original files
-            //             if (imageFile) {
-            //                 addCaptionToImage(imageFile, model, result.captions[model]);
-            //             }
-            //         });
-            //     }
-            // });
+            response.data.results.forEach((result: any) => {
+                if (result.captions) {
+                    Object.keys(result.captions).forEach(model => {
+                        const imageFile = images.find(img => img.file.name === result.id)?.file;
+                        if (imageFile) {
+                            addCaptionToImage(imageFile, model, result.captions[model]);
+                        }
+                    });
+                }
+            });
 
 
             if (models.length > 0) {
@@ -119,14 +98,6 @@ function App() {
             console.error('Error uploading images:', error);
             alert('Wystąpił błąd podczas wysyłania zdjęć. Sprawdź konsolę.');
         }
-
-        // Removed the old local captioning loop, as the backend is now responsible
-        // for generating captions and sending them back.
-        // images.forEach(imageFromContext => {
-        //     models.forEach(modelName => {
-        //         addCaptionToImage(imageFromContext.file, modelName, `Opis dla ${imageFromContext.file.name} od ${modelName}`);
-        //     });
-        // });
     };
 
     return (
