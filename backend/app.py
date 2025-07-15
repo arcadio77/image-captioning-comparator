@@ -64,15 +64,6 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
             correct_models.append(model)
             server_models.add(model)
 
-    for model in models:
-        try:
-            if repo_exists(model):
-                info = repo_info(model)
-                if "image-to-text" in info.tags:
-                    correct_models.append(model)
-        except Exception:
-            continue
-
     loop = asyncio.get_event_loop()
     futures = {}
     for file_id in ids:
