@@ -3,14 +3,17 @@ from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
 from huggingface_hub import scan_cache_dir, repo_exists, repo_info
+import uuid, time, threading
 
 load_dotenv()
 
 loaded_models = {}
-# cached_models = ()
+cached_models = set()
+sending_status = True
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
 QUEUE_NAME = 'image_queue'
+WORKER_ID = uuid.uuid4().hex[:8]
 
 def callback(ch, method, properties, body):
     message = json.loads(body)
@@ -47,14 +50,41 @@ def callback(ch, method, properties, body):
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
+def send_status(worker_id, models, status="online"):
+    params = pika.URLParameters(RABBITMQ_URL)
+    conn = pika.BlockingConnection(params)
+    ch = conn.channel()
+    ch.queue_declare(queue="worker_status_queue")
+
+    msg = {
+        "worker_id": worker_id,
+        "available_models": list(models),
+        "status": status
+    }
+
+    ch.basic_publish(
+        exchange='',
+        routing_key="worker_status_queue",
+        body=json.dumps(msg)
+    )
+
+    conn.close()
+
+def status_sender():
+    while sending_status:
+        send_status(WORKER_ID, cached_models, status="online")
+        time.sleep(10)
+
 def start_consumer():
-    # global cached_models
+    global cached_models, sending_status
 
     # Scan the cache directory for models and filter for image-to-text models from huggingface
-    # for repo_info in scan_cache_dir().repos:
-    #     model = repo_info.repo_id
-    #     if repo_exists(model) and "image-to-text" in repo_info(model).tags:
-    #         cached_models.append(model)
+    for repo in scan_cache_dir().repos:
+        model = repo.repo_id
+        if repo_exists(model) and "image-to-text" in repo_info(model).tags:
+            cached_models.add(model)
+
+    send_status(WORKER_ID, cached_models, status="online")
 
     params = pika.URLParameters(RABBITMQ_URL)
     connection = None
@@ -77,6 +107,7 @@ def start_consumer():
         print(f"error: {e}")
     finally:
         if connection and not connection.is_closed:
+            send_status(WORKER_ID, cached_models, status="offline")
             connection.close()
             print("RabbitMQ connection closed.")
 
