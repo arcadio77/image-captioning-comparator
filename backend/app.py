@@ -20,6 +20,8 @@ app.add_middleware(
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
 response_futures = {}
 
+server_models = set()
+
 def setup_connection():
     params = pika.URLParameters(RABBITMQ_URL)
     connection = pika.BlockingConnection(params)
@@ -43,17 +45,28 @@ def start_response_listener():
 
 @app.on_event("startup")
 def start_listener_thread():
-    threading.Thread(target=start_response_listener, daemon=True).start()
+    try:
+        threading.Thread(target=start_response_listener, daemon=True).start()
+    except Exception as e:
+        print("Startup error:", e)
+
+@app.get("/models")
+def get_models():
+    return {"models": sorted(list(server_models))}
 
 @app.post("/upload")
 async def upload_images(files: List[UploadFile], models: List[str], ids: List[str]):
     models = models[0].split(",")
     ids = ids[0].split(",")
 
-    correct_models = [
-        model for model in models
-        if repo_exists(model) and "image-to-text" in repo_info(model).tags
-    ]
+    correct_models = []
+
+    for model in models:
+        if model in server_models:
+            correct_models.append(model)
+        elif repo_exists(model) and "image-to-text" in repo_info(model).tags:
+            correct_models.append(model)
+            server_models.add(model)
 
     conn, ch = setup_connection()
     results = []
