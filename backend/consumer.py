@@ -2,10 +2,12 @@ import pika, os, io, json, base64
 from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
+from huggingface_hub import scan_cache_dir, repo_exists, repo_info
 
 load_dotenv()
 
 loaded_models = {}
+# cached_models = ()
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
 QUEUE_NAME = 'image_queue'
@@ -19,11 +21,13 @@ def callback(ch, method, properties, body):
     results = []
 
     for model in models:
+        print(f"Processing model: {model} for file ID: {file_id}")
         if model not in loaded_models:
             loaded_models[model] = pipeline("image-to-text", model=model)
     
         pipe = loaded_models[model]
         result = pipe(image_data)[0]["generated_text"]
+        print(f"Result: {result}")
         results.append({"model": model, "caption": result})
 
     response_body = json.dumps({
@@ -44,6 +48,14 @@ def callback(ch, method, properties, body):
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
 def start_consumer():
+    # global cached_models
+
+    # Scan the cache directory for models and filter for image-to-text models from huggingface
+    # for repo_info in scan_cache_dir().repos:
+    #     model = repo_info.repo_id
+    #     if repo_exists(model) and "image-to-text" in repo_info(model).tags:
+    #         cached_models.append(model)
+
     params = pika.URLParameters(RABBITMQ_URL)
     connection = None
     try:
