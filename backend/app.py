@@ -4,6 +4,8 @@ import os, pika, base64, json, asyncio, threading
 from dotenv import load_dotenv
 from huggingface_hub import repo_exists, repo_info
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from collections import defaultdict
 
 load_dotenv()
 
@@ -106,9 +108,10 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
     loop = asyncio.get_event_loop()
     futures = {}
     for file_id in ids:
-        future = loop.create_future()
-        futures[file_id] = future
-        response_futures[file_id] = future
+        for model in correct_models:
+            future = loop.create_future()
+            futures[f"{file_id}_{model}"] = future
+            response_futures[f"{file_id}_{model}"] = future
 
     conn, ch = setup_connection()
 
@@ -117,21 +120,22 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
         contents = await file.read()
         encoded = base64.b64encode(contents).decode('utf-8')
 
-        message = {
-            "id": file_id,
-            "image": encoded,
-            "models": correct_models
-        }
+        for model in correct_models:
+            message = {
+                "id": file_id,
+                "image": encoded,
+                "model": model
+            }
 
-        ch.basic_publish(
-            exchange='',
-            routing_key='image_queue',
-            body=json.dumps(message),
-            properties=pika.BasicProperties(
-                correlation_id=file_id,
-                reply_to=SERVER_QUEUE
+            ch.basic_publish(
+                exchange='',
+                routing_key='image_queue',
+                body=json.dumps(message),
+                properties=pika.BasicProperties(
+                    correlation_id=f"{file_id}_{model}",
+                    reply_to=SERVER_QUEUE
+                )
             )
-        )
 
     async def wait_with_timeout(file_id, fut):
         try:
@@ -144,6 +148,34 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
         *[wait_with_timeout(file_id, fut) for file_id, fut in futures.items()]
     )
 
-    conn.close()
-    return {"results": results}
+    
+    # TODO: Remove it after implementing streaming response
+    grouped = defaultdict(list)
+    for item in results:
+        grouped[item["id"]].append(item)
 
+    merged_results = []
+    for id_, items in grouped.items():
+        combined = {"id": id_, "results": []}
+        for item in items:
+            if "results" in item:
+                combined["results"].extend(item["results"])
+        merged_results.append(combined)
+
+    conn.close()    
+    return {"results": merged_results}
+    # Streaming response
+    # async def result_stream():
+    #     try:
+    #         # map future -> file_id
+    #         future_to_id = {fut: fid for fid, fut in futures.items()}
+    #         for fut in asyncio.as_completed(futures.values()):
+    #             try:
+    #                 result = await fut
+    #             except asyncio.TimeoutError:
+    #                 result = {"id": future_to_id[fut], "error": "Timeout"}
+    #             yield (json.dumps(result) + "\n").encode("utf-8")
+    #     finally:
+    #         conn.close()
+
+    # return StreamingResponse(result_stream(), media_type="application/json")
