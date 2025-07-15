@@ -144,7 +144,6 @@ function App() {
             if (models.length > 0) {
                 setSelectedModel(models[0]);
             }
-            handleCloseAlertDialog();
             navigate('/gallery');
 
         } catch (error) {
@@ -206,7 +205,7 @@ function App() {
                     disabled={loading}
                 />
                 <Button
-                    variant="contained"
+                    variant="outlined"
                     onClick={handleAddText}
                     size="large"
                     disabled={loading}
@@ -280,7 +279,7 @@ function App() {
                 </Box>
             ) : (
                 <Button
-                    variant="contained"
+                    variant="outlined"
                     size="large"
                     sx={{ mt: 2 }}
                     onClick={handleSend}
@@ -293,7 +292,13 @@ function App() {
                 variant="outlined"
                 color="error"
                 size="small"
-                sx={{ mt: 2 }}
+                sx={{
+                    mt: 2,
+                    '&:hover': {
+                        backgroundColor: (theme) => theme.palette.error.light + '1A',
+                        borderColor: (theme) => theme.palette.error.dark,
+                    },
+                }}
                 onClick={reset}
                 disabled={loading}
             >
