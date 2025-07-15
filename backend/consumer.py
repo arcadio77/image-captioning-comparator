@@ -84,7 +84,7 @@ def start_consumer():
         if repo_exists(model) and "image-to-text" in repo_info(model).tags:
             cached_models.add(model)
 
-    send_status(WORKER_ID, cached_models, status="online")
+    threading.Thread(target=status_sender, daemon=True).start()
 
     params = pika.URLParameters(RABBITMQ_URL)
     connection = None
