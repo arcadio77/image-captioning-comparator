@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
     Container,
     TextField,
@@ -13,7 +13,9 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     ListItemButton,
     CircularProgress as MuiCircularProgress,
+    Grid,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FileUploader from "./FileUploader.tsx";
 import { useImageData } from './ImageDataContext';
@@ -22,12 +24,13 @@ import { VITE_BASE_URL } from './utils.ts';
 import axios from 'axios';
 
 function App() {
+    const theme = useTheme();
+
     const { addImage, removeImage, images, models, addCaptionToImage, reset, setSelectedModel, addModel, removeModel } = useImageData();
 
     const navigate = useNavigate();
 
     const [inputText, setInputText] = useState('');
-    const [selectedImageNames, setSelectedImageNames] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
 
     const [openAlertDialog, setOpenAlertDialog] = useState(false);
@@ -38,9 +41,8 @@ function App() {
     const [fetchedModels, setFetchedModels] = useState<string[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
 
-    useEffect(() => {
-        setSelectedImageNames(images.map(img => img.file.name));
-    }, [images]);
+    const [modelFilterText, setModelFilterText] = useState('');
+
 
     const showAlertDialog = (title: string, message: string) => {
         setAlertDialogTitle(title);
@@ -61,6 +63,7 @@ function App() {
     const handleCloseModelsDialog = () => {
         setOpenModelsDialog(false);
         setFetchedModels([]);
+        setModelFilterText('');
     };
 
     const handleAddText = () => {
@@ -103,7 +106,7 @@ function App() {
 
     const handleSend = async () => {
         if (images.length === 0 || models.length === 0) {
-            showAlertDialog("Błąd Wysyłki", "Proszę dodać zdjęcia i modele przed wysłaniem!");
+            showAlertDialog("Błąd wysyłania", "Proszę dodać modele i zdjęcia przed wysłaniem!");
             return;
         }
 
@@ -148,12 +151,36 @@ function App() {
 
         } catch (error) {
             console.error('Error uploading images:', error);
-            showAlertDialog("Błąd", `Wystąpił błąd podczas wysyłania zdjęć: 
+            showAlertDialog("Błąd", `Wystąpił błąd podczas wysyłania zdjęć:
             ${axios.isAxiosError(error) && error.response ? error.response.data.message || error.message : 'Nieznany błąd'}`);
         } finally {
             setLoading(false);
         }
     };
+
+    const filteredAndSortedModels = useMemo(() => {
+        const sorted = [...models].sort((a, b) => a.localeCompare(b));
+        if (!modelFilterText) {
+            return sorted;
+        }
+        return sorted.filter(model =>
+            model.toLowerCase().includes(modelFilterText.toLowerCase())
+        );
+    }, [models, modelFilterText]);
+
+    const imageUrls = useMemo(() => {
+        return images.map(image => ({
+            name: image.file.name,
+            size: image.file.size,
+            url: URL.createObjectURL(image.file)
+        }));
+    }, [images]);
+
+    useEffect(() => {
+        return () => {
+            imageUrls.forEach(img => URL.revokeObjectURL(img.url));
+        };
+    }, [imageUrls]);
 
     return (
         <Container
@@ -192,7 +219,7 @@ function App() {
             >
                 <TextField
                     label="Przekopiuj nazwę modelu"
-                    variant="outlined"
+                    variant="standard"
                     fullWidth
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
@@ -201,7 +228,8 @@ function App() {
                             handleAddText();
                         }
                     }}
-                    sx={{ mr: 2 }}
+                    sx={{ mr: 2, border: `1px solid ${theme.palette.divider}`,
+                        borderRadius: '4px',}}
                     disabled={loading}
                 />
                 <Button
@@ -217,7 +245,7 @@ function App() {
             <Box
                 sx={{
                     width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
-                    border: '1px solid #ccc',
+                    border: `1px solid ${theme.palette.divider}`,
                     borderRadius: '4px',
                     p: 2,
                     mb: 3,
@@ -229,11 +257,26 @@ function App() {
                 <Typography variant="h6" component="h2" gutterBottom sx={{ textAlign: 'center' }}>
                     Dodane modele:
                 </Typography>
-                {models.length === 0 ? (
-                    <Typography color="text.secondary" sx={{ textAlign: 'center' }}>Brak modeli</Typography>
+                {models.length > 0 && (
+                    <TextField
+                        label="Filtruj modele"
+                        variant="outlined"
+                        fullWidth
+                        value={modelFilterText}
+                        onChange={(e) => setModelFilterText(e.target.value)}
+                        sx={{ mb: 2 }}
+                        size="small"
+                        disabled={loading}
+                    />
+                )}
+
+                {filteredAndSortedModels.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
+                        {models.length === 0 ? "Brak modeli" : "Brak modeli pasujących do filtra"}
+                    </Typography>
                 ) : (
                     <List sx={{ width: '100%' }}>
-                        {models.map((modelName) => (
+                        {filteredAndSortedModels.map((modelName) => (
                             <ListItem
                                 key={modelName}
                                 secondaryAction={
@@ -255,22 +298,35 @@ function App() {
                 label="Prześlij zdjęcia"
                 loading={loading}
             />
-            {selectedImageNames.length > 0 && (
+            {imageUrls.length > 0 && (
                 <Box mt={2} sx={{ width: '100%', textAlign: 'center' }}>
                     <Typography variant="body2" gutterBottom color="text.secondary">
                         Wybrane zdjęcia:
                     </Typography>
-                    <Box display="flex" flexWrap="wrap" gap={1} justifyContent="center">
-                        {images.map((img) => (
-                            <Chip
-                                key={img.file.name + img.file.size}
-                                label={img.file.name}
-                                size="small"
-                                onDelete={() => removeImage(img.file)}
-                                disabled={loading}
-                            />
+                    <Grid container spacing={1} justifyContent="center">
+                        {imageUrls.map((img) => (
+                            <Grid item key={img.name + img.size} {...({ component: "div" } as any)}>
+                                <Chip
+                                    label={img.name}
+                                    size="small"
+                                    onDelete={() => removeImage(
+                                        images.find(
+                                            originalImg => originalImg.file.name === img.name && originalImg.file.size === img.size
+                                        )?.file || new File([], '')
+                                    )}
+                                    disabled={loading}
+                                    avatar={
+                                        <img
+                                            src={img.url}
+                                            alt={img.name}
+                                            style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', padding:4 }}
+                                        />
+                                    }
+                                    sx={{ height: 'auto', '& .MuiChip-label': { py: 0.5 }, '& .MuiChip-avatar': { width: 28, height: 28 } }}
+                                />
+                            </Grid>
                         ))}
-                    </Box>
+                    </Grid>
                 </Box>
             )}
             {loading ? (
