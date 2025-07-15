@@ -167,8 +167,8 @@ function App() {
                 p: 2,
             }}
         >
-            <Typography variant="h4" component="h1" gutterBottom>
-                Porównaj modele z Hugging Face
+            <Typography variant="h5" component="h1" gutterBottom>
+                Porównaj modele do image captioningu z Hugging Face
             </Typography>
 
             <Button
