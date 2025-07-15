@@ -105,7 +105,7 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
 
     async def wait_with_timeout(file_id, fut):
         try:
-            result = await asyncio.wait_for(fut, timeout=30.0)
+            result = await asyncio.wait_for(fut, timeout=None)
         except asyncio.TimeoutError:
             result = {"id": file_id, "error": "Timeout"}
         return result

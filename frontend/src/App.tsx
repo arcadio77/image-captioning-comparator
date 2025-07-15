@@ -10,8 +10,9 @@ import {
     Box,
     Typography,
     Chip,
-    CircularProgress,
     Dialog, DialogTitle, DialogContent, DialogActions,
+    ListItemButton,
+    CircularProgress as MuiCircularProgress,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FileUploader from "./FileUploader.tsx";
@@ -29,24 +30,37 @@ function App() {
     const [selectedImageNames, setSelectedImageNames] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const [openDialog, setOpenDialog] = useState(false);
-    const [dialogTitle, setDialogTitle] = useState('');
-    const [dialogMessage, setDialogMessage] = useState('');
+    const [openAlertDialog, setOpenAlertDialog] = useState(false);
+    const [alertDialogTitle, setAlertDialogTitle] = useState('');
+    const [alertDialogMessage, setAlertDialogMessage] = useState('');
+
+    const [openModelsDialog, setOpenModelsDialog] = useState(false);
+    const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+    const [fetchingModels, setFetchingModels] = useState(false);
 
     useEffect(() => {
         setSelectedImageNames(images.map(img => img.file.name));
     }, [images]);
 
-    const showDialog = (title: string, message: string) => {
-        setDialogTitle(title);
-        setDialogMessage(message);
-        setOpenDialog(true);
+    const showAlertDialog = (title: string, message: string) => {
+        setAlertDialogTitle(title);
+        setAlertDialogMessage(message);
+        setOpenAlertDialog(true);
     };
 
-    const handleCloseDialog = () => {
-        setOpenDialog(false);
-        setDialogTitle('');
-        setDialogMessage('');
+    const handleCloseAlertDialog = () => {
+        setOpenAlertDialog(false);
+        setAlertDialogTitle('');
+        setAlertDialogMessage('');
+    };
+
+    const handleOpenModelsDialog = () => {
+        setOpenModelsDialog(true);
+    };
+
+    const handleCloseModelsDialog = () => {
+        setOpenModelsDialog(false);
+        setFetchedModels([]);
     };
 
     const handleAddText = () => {
@@ -68,16 +82,28 @@ function App() {
     };
 
     const handleFetchModels = async () => {
+        setFetchingModels(true);
         try {
-            const response = await axios.get(`${VITE_BASE_URL}upload`)
+            const response = await axios.get(`${VITE_BASE_URL}models`);
+            setFetchedModels(response.data.models);
+            handleOpenModelsDialog();
         } catch (error) {
             console.error('Error fetching models:', error);
+            showAlertDialog("Błąd", "Nie udało się pobrać listy modeli.");
+        } finally {
+            setFetchingModels(false);
         }
     }
 
+    const handleAddAllModelsFromFetched = () => {
+        fetchedModels.forEach(model => addModel(model));
+        handleCloseModelsDialog();
+    };
+
+
     const handleSend = async () => {
         if (images.length === 0 || models.length === 0) {
-            showDialog("Błąd Wysyłki", "Proszę dodać zdjęcia i modele przed wysłaniem!");
+            showAlertDialog("Błąd Wysyłki", "Proszę dodać zdjęcia i modele przed wysłaniem!");
             return;
         }
 
@@ -118,11 +144,13 @@ function App() {
             if (models.length > 0) {
                 setSelectedModel(models[0]);
             }
-
+            handleCloseAlertDialog();
             navigate('/gallery');
 
         } catch (error) {
             console.error('Error uploading images:', error);
+            showAlertDialog("Błąd", `Wystąpił błąd podczas wysyłania zdjęć: 
+            ${axios.isAxiosError(error) && error.response ? error.response.data.message || error.message : 'Nieznany błąd'}`);
         } finally {
             setLoading(false);
         }
@@ -150,9 +178,9 @@ function App() {
                 size="small"
                 sx={{ mt: 2, mb: 2 }}
                 onClick={handleFetchModels}
-                disabled={loading}
+                disabled={loading || fetchingModels}
             >
-                Pobrane modele
+                {fetchingModels ? <MuiCircularProgress size={24} /> : "Pobrane modele"}
             </Button>
 
             <Box
@@ -175,6 +203,7 @@ function App() {
                         }
                     }}
                     sx={{ mr: 2 }}
+                    disabled={loading}
                 />
                 <Button
                     variant="contained"
@@ -247,7 +276,7 @@ function App() {
             )}
             {loading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                    <CircularProgress />
+                    <MuiCircularProgress />
                 </Box>
             ) : (
                 <Button
@@ -270,22 +299,75 @@ function App() {
             >
                 Wyczyść Wszystkie Dane (zdjęcia i modele)
             </Button>
-
             <Dialog
-                open={openDialog}
-                onClose={handleCloseDialog}
-                aria-labelledby="dialog-title"
-                aria-describedby="dialog-description"
+                open={openAlertDialog}
+                onClose={handleCloseAlertDialog}
+                aria-labelledby="alert-dialog-title"
+                aria-describedby="alert-dialog-description"
             >
-                <DialogTitle id="dialog-title">{dialogTitle}</DialogTitle>
+                <DialogTitle id="alert-dialog-title">{alertDialogTitle}</DialogTitle>
                 <DialogContent>
-                    <Typography id="dialog-description">
-                        {dialogMessage}
+                    <Typography id="alert-dialog-description">
+                        {alertDialogMessage}
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleCloseDialog} autoFocus>
+                    <Button onClick={handleCloseAlertDialog} autoFocus>
                         OK
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={openModelsDialog}
+                onClose={handleCloseModelsDialog}
+                aria-labelledby="models-dialog-title"
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle id="models-dialog-title">Wybierz modele do dodania</DialogTitle>
+                <DialogContent dividers>
+                    {fetchingModels ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                            <MuiCircularProgress />
+                        </Box>
+                    ) : fetchedModels.length === 0 ? (
+                        <Typography color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                            Brak dostępnych modeli.
+                        </Typography>
+                    ) : (
+                        <List>
+                            {fetchedModels.map((modelName) => (
+                                <ListItem
+                                    key={modelName}
+                                    disablePadding
+                                    secondaryAction={
+                                        <IconButton
+                                            edge="end"
+                                            aria-label="add"
+                                            onClick={() => addModel(modelName)}
+                                            disabled={models.includes(modelName) || loading}
+                                        >
+                                            {models.includes(modelName) ? "Dodano" : "Dodaj"}
+                                        </IconButton>
+                                    }
+                                >
+                                    <ListItemButton
+                                        onClick={() => addModel(modelName)}
+                                        disabled={models.includes(modelName) || loading}
+                                    >
+                                        <ListItemText primary={modelName} />
+                                    </ListItemButton>
+                                </ListItem>
+                            ))}
+                        </List>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleAddAllModelsFromFetched} disabled={fetchedModels.length === 0 || loading}>
+                        Dodaj wszystkie modele
+                    </Button>
+                    <Button onClick={handleCloseModelsDialog}>
+                        Zamknij
                     </Button>
                 </DialogActions>
             </Dialog>
