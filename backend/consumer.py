@@ -54,7 +54,6 @@ def send_status(worker_id, models, status="online"):
     params = pika.URLParameters(RABBITMQ_URL)
     conn = pika.BlockingConnection(params)
     ch = conn.channel()
-    ch.queue_declare(queue="worker_status_queue")
 
     msg = {
         "worker_id": worker_id,
@@ -62,9 +61,12 @@ def send_status(worker_id, models, status="online"):
         "status": status
     }
 
+    ch.exchange_declare(exchange="worker_status_exchange", exchange_type="fanout")
+
+
     ch.basic_publish(
-        exchange='',
-        routing_key="worker_status_queue",
+        exchange='worker_status_exchange',
+        routing_key='',
         body=json.dumps(msg)
     )
 

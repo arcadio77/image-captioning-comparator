@@ -55,13 +55,14 @@ def listen_worker_status():
         status = data.get("status", "offline")
 
         if worker_id and status == "online":
+                if worker_id not in workers:
+                    print(f"Worker {worker_id} is online")
                 workers[worker_id] = set(available_models)
-                print(f"Worker {worker_id}: {available_models}")
 
         elif worker_id and status == "offline":
             if worker_id in workers:
+                print(f"Worker {worker_id} is offline")
                 del workers[worker_id]
-                print(f"Worker {worker_id} is offline.")
 
         if workers:
             server_models = set.intersection(*workers.values())
@@ -71,7 +72,14 @@ def listen_worker_status():
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     conn, ch = setup_connection()
-    ch.basic_consume(queue="worker_status_queue", on_message_callback=callback)
+    ch.exchange_declare(exchange='worker_status_exchange', exchange_type='fanout')
+
+    result = ch.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
+
+    ch.queue_bind(exchange='worker_status_exchange', queue=queue_name)
+
+    ch.basic_consume(queue=queue_name, on_message_callback=callback)
     ch.start_consuming()
 
 @app.on_event("startup")
@@ -94,7 +102,7 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
             correct_models.append(model)
         elif repo_exists(model) and "image-to-text" in repo_info(model).tags:
             correct_models.append(model)
-            
+
     loop = asyncio.get_event_loop()
     futures = {}
     for file_id in ids:
