@@ -21,6 +21,7 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f"
 SERVER_QUEUE = os.getenv("SERVER_QUEUE", "response_queue")
 response_futures = {}
 server_models = set()
+workers = {}
 
 def setup_connection():
     params = pika.URLParameters(RABBITMQ_URL)
@@ -28,6 +29,7 @@ def setup_connection():
     channel = connection.channel()
     channel.queue_declare(queue='image_queue')
     channel.queue_declare(queue=SERVER_QUEUE)
+    channel.queue_declare(queue="worker_status_queue")
     return connection, channel
 
 def start_response_listener():
@@ -43,9 +45,47 @@ def start_response_listener():
 
     ch.start_consuming()
 
+def listen_worker_status():
+    def callback(ch, method, props, body):
+        global workers, server_models
+
+        data = json.loads(body)
+        worker_id = data.get("worker_id")
+        available_models = data.get("available_models", [])
+        status = data.get("status", "offline")
+
+        if worker_id and status == "online":
+                if worker_id not in workers:
+                    print(f"Worker {worker_id} is online")
+                workers[worker_id] = set(available_models)
+
+        elif worker_id and status == "offline":
+            if worker_id in workers:
+                print(f"Worker {worker_id} is offline")
+                del workers[worker_id]
+
+        if workers:
+            server_models = set.intersection(*workers.values())
+        else:
+            server_models = set()
+
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    conn, ch = setup_connection()
+    ch.exchange_declare(exchange='worker_status_exchange', exchange_type='fanout')
+
+    result = ch.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
+
+    ch.queue_bind(exchange='worker_status_exchange', queue=queue_name)
+
+    ch.basic_consume(queue=queue_name, on_message_callback=callback)
+    ch.start_consuming()
+
 @app.on_event("startup")
 def start_listener_thread():
     threading.Thread(target=start_response_listener, daemon=True).start()
+    threading.Thread(target=listen_worker_status, daemon=True).start()
 
 @app.get("/models")
 def get_models():
@@ -62,16 +102,6 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
             correct_models.append(model)
         elif repo_exists(model) and "image-to-text" in repo_info(model).tags:
             correct_models.append(model)
-            server_models.add(model)
-
-    for model in models:
-        try:
-            if repo_exists(model):
-                info = repo_info(model)
-                if "image-to-text" in info.tags:
-                    correct_models.append(model)
-        except Exception:
-            continue
 
     loop = asyncio.get_event_loop()
     futures = {}
@@ -105,7 +135,7 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
 
     async def wait_with_timeout(file_id, fut):
         try:
-            result = await asyncio.wait_for(fut, timeout=30.0)
+            result = await asyncio.wait_for(fut, timeout=None)
         except asyncio.TimeoutError:
             result = {"id": file_id, "error": "Timeout"}
         return result
