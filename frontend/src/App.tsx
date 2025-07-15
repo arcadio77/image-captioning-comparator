@@ -42,6 +42,7 @@ function App() {
     const [fetchingModels, setFetchingModels] = useState(false);
 
     const [modelFilterText, setModelFilterText] = useState('');
+    const [fetchedModelFilterText, setFetchedModelFilterText] = useState('');
 
 
     const showAlertDialog = (title: string, message: string) => {
@@ -64,6 +65,7 @@ function App() {
         setOpenModelsDialog(false);
         setFetchedModels([]);
         setModelFilterText('');
+        setFetchedModelFilterText('');
     };
 
     const handleAddText = () => {
@@ -88,7 +90,8 @@ function App() {
         setFetchingModels(true);
         try {
             const response = await axios.get(`${VITE_BASE_URL}models`);
-            setFetchedModels(response.data.models);
+            const sortedModels = response.data.models.sort((a: string, b: string) => a.localeCompare(b));
+            setFetchedModels(sortedModels);
             handleOpenModelsDialog();
         } catch (error) {
             console.error('Error fetching models:', error);
@@ -167,6 +170,15 @@ function App() {
             model.toLowerCase().includes(modelFilterText.toLowerCase())
         );
     }, [models, modelFilterText]);
+
+    const filteredFetchedModels = useMemo(() => {
+        if (!fetchedModelFilterText) {
+            return fetchedModels;
+        }
+        return fetchedModels.filter(model =>
+            model.toLowerCase().includes(fetchedModelFilterText.toLowerCase())
+        );
+    }, [fetchedModels, fetchedModelFilterText]);
 
     const imageUrls = useMemo(() => {
         return images.map(image => ({
@@ -387,17 +399,27 @@ function App() {
             >
                 <DialogTitle id="models-dialog-title">Wybierz modele do dodania</DialogTitle>
                 <DialogContent dividers>
+                    <TextField
+                        label="Filtruj pobrane modele"
+                        variant="outlined"
+                        fullWidth
+                        value={fetchedModelFilterText}
+                        onChange={(e) => setFetchedModelFilterText(e.target.value)}
+                        sx={{ mb: 2 }}
+                        size="small"
+                        disabled={fetchingModels || loading}
+                    />
                     {fetchingModels ? (
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                             <MuiCircularProgress />
                         </Box>
-                    ) : fetchedModels.length === 0 ? (
+                    ) : filteredFetchedModels.length === 0 ? (
                         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                             Brak dostępnych modeli.
                         </Typography>
                     ) : (
                         <List>
-                            {fetchedModels.map((modelName) => (
+                            {filteredFetchedModels.map((modelName) => (
                                 <ListItem
                                     key={modelName}
                                     disablePadding
@@ -424,7 +446,7 @@ function App() {
                     )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleAddAllModelsFromFetched} disabled={fetchedModels.length === 0 || loading}>
+                    <Button onClick={handleAddAllModelsFromFetched} disabled={filteredFetchedModels.length === 0 || loading}>
                         Dodaj wszystkie modele
                     </Button>
                     <Button onClick={handleCloseModelsDialog}>
