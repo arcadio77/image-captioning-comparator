@@ -32,7 +32,6 @@ def setup_connection():
 
     channel.exchange_declare(exchange='worker_tasks', exchange_type='topic')
 
-    channel.queue_declare(queue='image_queue')
     channel.queue_declare(queue=SERVER_QUEUE)
     channel.queue_declare(queue="worker_status_queue")
     return connection, channel
@@ -60,9 +59,9 @@ def listen_worker_status():
         status = data.get("status", "offline")
 
         if worker_id and status == "online":
-                if worker_id not in workers:
-                    print(f"Worker {worker_id} is online")
-                workers[worker_id] = set(available_models)
+            if worker_id not in workers:
+                print(f"Worker {worker_id} is online")
+            workers[worker_id] = set(available_models)
 
         elif worker_id and status == "offline":
             if worker_id in workers:
@@ -70,7 +69,7 @@ def listen_worker_status():
                 del workers[worker_id]
 
         if workers:
-            server_models = set.intersection(*workers.values())
+            server_models = set.union(*workers.values())
         else:
             server_models = set()
 

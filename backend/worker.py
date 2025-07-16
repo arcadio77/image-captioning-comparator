@@ -8,7 +8,7 @@ class Worker:
     def __init__(self):
         load_dotenv()
         self.loaded_models = {} # model_name -> pipeline
-        self.cached_models = set() # names of models in cache
+        self.cached_models = set() # names of models in cache (not loaded yet)
         self.sending_status = True # Flag to control status sending to server
         self.worker_id = uuid.uuid4().hex[:8]  # Unique worker ID
         self.rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
@@ -144,9 +144,6 @@ class Worker:
         if model not in self.loaded_models:
             try:
                 self.loaded_models[model] = pipeline("image-to-text", model=model)
-                # Add model to cached models if it was loaded successfully and notify the server
-                self.cached_models.add(model)
-                self.send_status()
             except Exception as e:
                 print(f"Error loading model {model}: {e}")
                 return
