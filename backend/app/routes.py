@@ -13,7 +13,13 @@ router = APIRouter()
 
 @router.get("/workers")
 def get_workers():
-    return {"workers": [{"id": worker_id, "models": list(models)} for worker_id, models in workers.items()]}
+    return {
+        "workers": [{
+            "id": worker_id,
+            "cached_models": list(worker["cached_models"]), 
+            "loaded_models": list(worker["loaded_models"])
+        } for worker_id, worker in workers.items()]
+    }
 
 @router.get("/models")
 def get_models():
@@ -28,7 +34,7 @@ def download_model(worker: str, model: str):
     if not worker in workers:
         return {"error": "Worker not found."}
 
-    if model in workers[worker]:
+    if model in workers[worker]["cached_models"]:
         return {"status": "Model already cached on worker."}
     
     publish_message('worker_control', worker, {
@@ -37,6 +43,20 @@ def download_model(worker: str, model: str):
     })
 
     return {"status": "Model download command sent to worker."}
+
+@router.post("/unload_model")
+def unload_model(worker: str, model: str):
+    if worker not in workers:
+        return {"error": "Worker not found."}
+    if model not in workers[worker]["loaded_models"]:
+        return {"error": "Model not loaded on worker."}
+    
+    publish_message('worker_control', worker, {
+        "action": "unload",
+        "model": model
+    })
+
+    return {"status": "Model unload command sent to worker."}
 
 @router.post("/upload")
 async def upload_images(files: List[UploadFile], ids: List[str], models: List[str]):

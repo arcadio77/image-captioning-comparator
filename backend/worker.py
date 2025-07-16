@@ -1,4 +1,4 @@
-import pika, os, io, json, base64, uuid, time, threading
+import pika, os, io, json, base64, uuid, time, threading, torch
 from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
@@ -59,29 +59,40 @@ class Worker:
             if connection and not connection.is_closed:
                 connection.close()
             raise e
-    
+        
+    def unload_model(self, model_name):
+        if model_name in self.loaded_models:
+            del self.loaded_models[model_name]
+            torch.cuda.empty_cache()  # Clear GPU memory if using CUDA
+            self.send_status()
+            print(f"Model {model_name} unloaded.")
+        else:
+            print(f"Model {model_name} is not loaded.")
+        
+    def download_model(self, model_name):
+        if model_name not in self.cached_models:
+            try:
+                self.loaded_models[model_name] = pipeline("image-to-text", model=model_name)
+                self.cached_models.add(model_name)
+                self.bind_to_model(model_name)
+                self.register_new_model_consumer(model_name)
+                self.send_status()
+                print(f"Model {model_name} downloaded and added to cache.")
+            except Exception as e:
+                print(f"Error downloading model {model_name}: {e}")
+        else:
+            print(f"Model {model_name} is already cached.")
+
     def start_control_consumer(self):
         def control_callback(ch, method, properties, body):
             message = json.loads(body)
             action = message.get("action", "")
             model = message.get("model", "")
 
-            def download_model():
-                if model not in self.cached_models:
-                    try:
-                        self.loaded_models[model] = pipeline("image-to-text", model=model)
-                        self.cached_models.add(model)
-                        self.bind_to_model(model)
-                        self.register_new_model_consumer(model)
-                        self.send_status()
-                        print(f"Model {model} downloaded and added to cache.")
-                    except Exception as e:
-                        print(f"Error downloading model {model}: {e}")
-                else:
-                    print(f"Model {model} is already cached.")
-
             if action == "download" and model:
-                threading.Thread(target=download_model, daemon=True).start()
+                threading.Thread(target=self.download_model, args=(model,), daemon=True).start()
+            elif action == "unload" and model:
+                threading.Thread(target=self.unload_model, args=(model,), daemon=True).start()
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -205,6 +216,7 @@ class Worker:
         msg = {
             "worker_id": self.worker_id,
             "available_models": list(self.cached_models),
+            "loaded_models": list(self.loaded_models.keys()),
             "status": status
         }
         

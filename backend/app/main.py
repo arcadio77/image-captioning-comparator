@@ -36,12 +36,15 @@ def worker_status_listener():
         data = json.loads(body)
         worker_id = data.get("worker_id")
         available_models = data.get("available_models", [])
+        loaded_models = data.get("loaded_models", [])
         status = data.get("status", "offline")
 
         if worker_id and status == "online":
             if worker_id not in workers:
                 print(f"Worker {worker_id} is online")
-            workers[worker_id] = set(available_models)
+                workers[worker_id] = {}
+            workers[worker_id]["cached_models"] = set(available_models)
+            workers[worker_id]["loaded_models"] = set(loaded_models) 
 
         elif worker_id and status == "offline":
             if worker_id in workers:
@@ -49,7 +52,11 @@ def worker_status_listener():
                 del workers[worker_id]
         
         server_models.clear()
-        server_models.update(set().union(*workers.values()))
+        all_models = set()
+        for worker_info in workers.values():
+            all_models.update(worker_info.get("cached_models", set()))
+        server_models.update(all_models)
+        
         channel.basic_ack(delivery_tag=method.delivery_tag)
 
     _, channel = setup_connection()
