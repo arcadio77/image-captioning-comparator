@@ -29,6 +29,9 @@ def setup_connection():
     params = pika.URLParameters(RABBITMQ_URL)
     connection = pika.BlockingConnection(params)
     channel = connection.channel()
+
+    channel.exchange_declare(exchange='worker_tasks', exchange_type='topic')
+
     channel.queue_declare(queue='image_queue')
     channel.queue_declare(queue=SERVER_QUEUE)
     channel.queue_declare(queue="worker_status_queue")
@@ -84,10 +87,48 @@ def listen_worker_status():
     ch.basic_consume(queue=queue_name, on_message_callback=callback)
     ch.start_consuming()
 
+def send_command_to_worker(worker_id, command, model=""):
+    params = pika.URLParameters(RABBITMQ_URL)
+    connection = pika.BlockingConnection(params)
+    channel = connection.channel()
+    channel.exchange_declare(exchange='worker_control', exchange_type='topic')
+    
+    msg = {
+        "action": command,
+        "model": model
+    }
+
+    channel.basic_publish(
+        exchange='worker_control',
+        routing_key=worker_id,
+        body=json.dumps(msg),
+    )
+
+    connection.close()
+
 @app.on_event("startup")
 def start_listener_thread():
     threading.Thread(target=start_response_listener, daemon=True).start()
     threading.Thread(target=listen_worker_status, daemon=True).start()
+
+@app.get("/workers")
+def get_workers():
+    return {"workers": [{"id": worker_id, "models": list(models)} for worker_id, models in workers.items()]}
+
+@app.post("/download_model")
+def download_model(model: str, worker: str):
+    """
+    Downloads a model to a specific worker if it exists and is an image-to-text model.
+    """
+    if repo_exists(model) and "image-to-text" in repo_info(model).tags:
+        if worker in workers:
+            if model not in workers[worker]:
+                send_command_to_worker(worker, "download", model)
+                return {"status": "Model download command sent to worker."}
+            else:
+                return {"status": "Model already cached on worker."}
+    else:
+        return {"error": "Model not found or not an image-to-text model."}
 
 @app.get("/models")
 def get_models():
@@ -128,8 +169,8 @@ async def upload_images(files: List[UploadFile], models: List[str], ids: List[st
             }
 
             ch.basic_publish(
-                exchange='',
-                routing_key='image_queue',
+                exchange='worker_tasks',
+                routing_key=model,
                 body=json.dumps(message),
                 properties=pika.BasicProperties(
                     correlation_id=f"{file_id}_{model}",

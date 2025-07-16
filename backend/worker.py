@@ -12,13 +12,27 @@ class Worker:
         self.sending_status = True # Flag to control status sending to server
         self.worker_id = uuid.uuid4().hex[:8]  # Unique worker ID
         self.rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
+        self.worker_queue = None
+        self.connection = None
+        self.channel = None
+        self.channel_control = None
+        self.connection_control = None
     
     def start(self):
         self.scan_cache()
+        self.setup_connection()
+        for model in self.cached_models:
+            self.bind_to_model(model)
         threading.Thread(target=self.status_sender, daemon=True).start()
+        threading.Thread(target=self.start_control_consumer, daemon=True).start()
         self.start_consumer()
 
-    def start_consumer(self):
+    def bind_to_model(self, model_name):
+        self.channel.queue_declare(queue=model_name, durable=True)
+        self.channel.queue_bind(exchange='worker_tasks', queue=model_name, routing_key=model_name)
+
+
+    def setup_connection(self):
         params = pika.URLParameters(self.rabbitmq_url)
         connection = None
 
@@ -26,18 +40,93 @@ class Worker:
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
 
-            channel.queue_declare(queue='image_queue')
-            channel.basic_consume(queue='image_queue', on_message_callback=self.callback, auto_ack=False)
+            channel.exchange_declare(exchange='worker_tasks', exchange_type='topic') # Exchange for inference tasks
+            
+            connection_control = pika.BlockingConnection(params)
+            channel_control = connection_control.channel()
+            channel_control.exchange_declare(exchange='worker_control', exchange_type='topic') # Exchange for controlling workers e.g. downloading models 
+            channel_control.queue_declare(queue=f'worker_{self.worker_id}', exclusive=True)  # Queue for controlling worker
+            channel_control.queue_bind(exchange='worker_control', queue=f'worker_{self.worker_id}', routing_key=f'{self.worker_id}')
+            self.worker_queue = f'worker_{self.worker_id}'
 
-            channel.start_consuming()
-        except KeyboardInterrupt:
-            print("Consumer stopped by user.")
+            self.connection = connection
+            self.channel = channel
+            self.connection_control = connection_control
+            self.channel_control = channel_control
+
         except Exception as e:
-            print(f"Error starting consumer: {e}")
-        finally:
+            print(f"Error setting up RabbitMQ connection: {e}")
             if connection and not connection.is_closed:
-                self.send_status(status="offline")
                 connection.close()
+            raise e
+    
+    def start_control_consumer(self):
+        def control_callback(ch, method, properties, body):
+            message = json.loads(body)
+            action = message.get("action", "")
+            model = message.get("model", "")
+
+            def download_model():
+                if model not in self.cached_models:
+                    try:
+                        self.loaded_models[model] = pipeline("image-to-text", model=model)
+                        self.cached_models.add(model)
+                        self.bind_to_model(model)
+                        self.register_new_model_consumer(model)
+                        self.send_status()
+                        print(f"Model {model} downloaded and added to cache.")
+                    except Exception as e:
+                        print(f"Error downloading model {model}: {e}")
+                else:
+                    print(f"Model {model} is already cached.")
+
+            if action == "download" and model:
+                threading.Thread(target=download_model, daemon=True).start()
+
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+        try:
+            self.channel_control.basic_consume(
+                queue=self.worker_queue,
+                on_message_callback=control_callback,
+                auto_ack=False
+            )
+
+            self.channel_control.start_consuming()
+        except KeyboardInterrupt:
+            print("Control consumer stopped by user.")
+        except Exception as e:
+            print(f"Error in control consumer: {e}")
+        finally:
+            if self.connection_control and not self.connection_control.is_closed:
+                self.connection_control.close()
+            
+    def register_new_model_consumer(self, model):
+        def callback_wrapper():
+            self.channel.basic_consume(
+                queue=model,
+                on_message_callback=self.callback,
+                auto_ack=False
+            )
+        self.connection.add_callback_threadsafe(callback_wrapper)
+
+    def start_consumer(self):
+        try:
+            for model in self.cached_models:
+                self.channel.basic_consume(
+                    queue=model,
+                    on_message_callback=self.callback,
+                    auto_ack=False
+                )
+            self.channel.start_consuming()
+        except KeyboardInterrupt:
+            print("Worker stopped by user.")
+        except Exception as e:
+            print(f"Error in worker: {e}")
+        finally:
+            if self.connection and not self.connection.is_closed:
+                self.send_status(status="offline")
+                self.connection.close()
     
     def callback(self, ch, method, properties, body):
         message = json.loads(body)
@@ -55,6 +144,9 @@ class Worker:
         if model not in self.loaded_models:
             try:
                 self.loaded_models[model] = pipeline("image-to-text", model=model)
+                # Add model to cached models if it was loaded successfully and notify the server
+                self.cached_models.add(model)
+                self.send_status()
             except Exception as e:
                 print(f"Error loading model {model}: {e}")
                 return
