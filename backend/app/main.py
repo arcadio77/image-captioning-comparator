@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes import router
 from rabbitmq import setup_connection
 from models import response_futures, workers, server_models
-import threading, json
+import threading, json, time
 
-from config import SERVER_QUEUE
+from config import SERVER_QUEUE, WORKER_TIMEOUT
 
 app = FastAPI()
 app.include_router(router)
@@ -17,6 +17,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+worker_lock = threading.Lock()
 
 def response_listener():
     def callback(channel, method, properties, body):
@@ -32,6 +34,13 @@ def response_listener():
 
     channel.start_consuming()
 
+def update_server_models():
+    server_models.clear()
+    all_models = set()
+    for worker_info in workers.values():
+        all_models.update(worker_info.get("cached_models", set()))
+    server_models.update(all_models)
+
 def worker_status_listener():
     def callback(channel, method, properties, body):
         data = json.loads(body)
@@ -40,23 +49,21 @@ def worker_status_listener():
         loaded_models = data.get("loaded_models", [])
         status = data.get("status", "offline")
 
-        if worker_id and status == "online":
-            if worker_id not in workers:
-                print(f"Worker {worker_id} is online")
-                workers[worker_id] = {}
-            workers[worker_id]["cached_models"] = set(available_models)
-            workers[worker_id]["loaded_models"] = set(loaded_models) 
+        with worker_lock:
+            if worker_id and status == "online":
+                if worker_id not in workers:
+                    print(f"Worker {worker_id} is online")
+                    workers[worker_id] = {}
+                workers[worker_id]["cached_models"] = set(available_models)
+                workers[worker_id]["loaded_models"] = set(loaded_models)
+                workers[worker_id]["last_seen"] = time.time()
 
-        elif worker_id and status == "offline":
-            if worker_id in workers:
-                print(f"Worker {worker_id} is offline")
-                del workers[worker_id]
-        
-        server_models.clear()
-        all_models = set()
-        for worker_info in workers.values():
-            all_models.update(worker_info.get("cached_models", set()))
-        server_models.update(all_models)
+            elif worker_id and status == "offline":
+                if worker_id in workers:
+                    print(f"Worker {worker_id} is offline")
+                    del workers[worker_id]
+            
+            update_server_models()
         
         channel.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -67,7 +74,22 @@ def worker_status_listener():
     channel.basic_consume(queue=q.method.queue, on_message_callback=callback)
     channel.start_consuming()
 
+def heartbeat_watcher():
+    while True:
+        current_time = time.time()
+
+        with worker_lock:
+            for worker_id, worker_info in list(workers.items()):
+                if current_time - worker_info.get("last_seen", 0) > WORKER_TIMEOUT:
+                    print(f"Worker {worker_id} has timed out")
+                    del workers[worker_id]
+            
+            update_server_models()
+
+        time.sleep(10)
+
 @app.on_event("startup")
 def startup_event():
     threading.Thread(target=response_listener, daemon=True).start()
     threading.Thread(target=worker_status_listener, daemon=True).start()
+    threading.Thread(target=heartbeat_watcher, daemon=True).start()
