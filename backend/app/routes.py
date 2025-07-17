@@ -27,6 +27,22 @@ def get_models():
     print(server_models)
     return {"models": sorted(list(server_models))}
 
+@router.delete("/delete_model")
+async def delete_model(worker, model: str):
+    if not is_valid_model(model):
+        return {"error": "Model not found or not an image-to-text model."}
+    if worker not in workers:
+        return {"error": "Worker not found."}
+    if model not in workers[worker]["cached_models"]:
+        return {"error": "Model not cached on worker."}
+    
+    publish_message('worker_control', worker, {
+        "action": "delete",
+        "model": model
+    })
+
+    return {"status": "Model deletion command sent to worker."}
+
 @router.post("/download_model")
 async def download_model(worker: str, model: str):
     if not is_valid_model(model):
