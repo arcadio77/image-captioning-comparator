@@ -1,27 +1,40 @@
-import { useState, useEffect, useMemo } from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {
-    Container,
-    TextField,
+    Box,
     Button,
+    Chip,
+    CircularProgress as MuiCircularProgress,
+    Container,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    FormControl,
+    Grid,
+    IconButton,
+    InputLabel,
     List,
     ListItem,
-    ListItemText,
-    IconButton,
-    Box,
-    Typography,
-    Chip,
-    Dialog, DialogTitle, DialogContent, DialogActions,
     ListItemButton,
-    CircularProgress as MuiCircularProgress,
-    Grid,
+    ListItemText,
+    MenuItem,
+    Select,
+    TextField,
+    Typography,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FileUploader from "./FileUploader.tsx";
-import { useImageData } from './ImageDataContext';
-import { useNavigate } from 'react-router-dom';
-import { VITE_BASE_URL } from './utils.ts';
+import {useImageData} from './ImageDataContext';
+import {useNavigate} from 'react-router-dom';
+import {VITE_BASE_URL} from './utils.ts';
 import axios from 'axios';
+
+interface WorkerInfo {
+    id: string;
+    cached_models: string[];
+    loaded_models: string[];
+}
 
 function App() {
     const theme = useTheme();
@@ -46,6 +59,29 @@ function App() {
     const [modelFilterText, setModelFilterText] = useState('');
     const [fetchedModelFilterText, setFetchedModelFilterText] = useState('');
 
+    const [availableWorkers, setAvailableWorkers] = useState<WorkerInfo[]>([]);
+    const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+    const [fetchingWorkers, setFetchingWorkers] = useState(false);
+
+    const fetchWorkers = async () => {
+        setFetchingWorkers(true);
+        try {
+            const response = await axios.get(`${VITE_BASE_URL}workers`);
+            setAvailableWorkers(response.data.workers);
+            if (response.data.workers.length === 1) {
+                setSelectedWorkerId(response.data.workers[0].id);
+            }
+        } catch (error) {
+            console.error('Błąd podczas pobierania listy workerów:', error);
+            showAlertDialog("Błąd", "Nie udało się pobrać listy dostępnych workerów.");
+        } finally {
+            setFetchingWorkers(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchWorkers();
+    }, []);
 
     const showAlertDialog = (title: string, message: string) => {
         setAlertDialogTitle(title);
@@ -86,18 +122,20 @@ function App() {
             showAlertDialog("Błąd", "Proszę podać nazwę modelu do pobrania.");
             return;
         }
+        if (!selectedWorkerId) {
+            showAlertDialog("Błąd", "Proszę wybrać workera, do którego chcesz pobrać model.");
+            return;
+        }
 
         setDownloadingModel(true);
         const modelToDownload = inputText.trim();
-        const workerName = "fc9523af";
-
         try {
             const response = await axios.post(
                 `${VITE_BASE_URL}download_model`,
                 {},
                 {
                     params: {
-                        worker: workerName,
+                        worker: selectedWorkerId,
                         model: modelToDownload,
                     },
                 }
@@ -130,7 +168,7 @@ function App() {
         } finally {
             setFetchingModels(false);
         }
-    }
+    };
 
     const handleAddAllModelsFromFetched = () => {
         fetchedModels.forEach(model => addModel(model));
@@ -247,23 +285,53 @@ function App() {
                     alignItems: 'center',
                     width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
                     mb: 3,
+                    gap: 2,
                 }}
             >
+                <FormControl sx={{ minWidth: 120 }} size="small" disabled={loading || downloadingModel || fetchingWorkers}>
+                    <InputLabel id="worker-select-label">Worker</InputLabel>
+                    <Select
+                        labelId="worker-select-label"
+                        id="worker-select"
+                        value={selectedWorkerId}
+                        label="Worker"
+                        onChange={(e) => setSelectedWorkerId(e.target.value as string)}
+                        required
+                    >
+                        {fetchingWorkers ? (
+                            <MenuItem disabled>
+                                <MuiCircularProgress size={16} sx={{ mr: 1 }} /> Ładowanie workerów...
+                            </MenuItem>
+                        ) : availableWorkers.length === 0 ? (
+                            <MenuItem value="" disabled>Brak dostępnych workerów</MenuItem>
+                        ) : (
+                            availableWorkers.map((worker) => (
+                                <MenuItem key={worker.id} value={worker.id}>
+                                    {worker.id}
+                                </MenuItem>
+                            ))
+                        )}
+                    </Select>
+                </FormControl>
+
                 <TextField
                     label="Przekopiuj nazwę modelu"
                     variant="standard"
                     fullWidth
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    sx={{ mr: 2, border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: '4px',}}
-                    disabled={loading}
+                    sx={{
+                        mr: 2,
+                        border: `1px solid ${theme.palette.divider}`,
+                        borderRadius: '4px',
+                    }}
+                    disabled={loading || fetchingWorkers || downloadingModel}
                 />
                 <Button
                     variant="outlined"
                     onClick={handleDownloadModel}
                     size="large"
-                    disabled={loading || downloadingModel}
+                    disabled={loading || downloadingModel || !selectedWorkerId || fetchingWorkers}
                 >
                     {downloadingModel ? <MuiCircularProgress size={24} /> : "Pobierz nowy model"}
                 </Button>
@@ -377,7 +445,7 @@ function App() {
                     size="large"
                     sx={{ mt: 2 }}
                     onClick={handleSend}
-                    disabled={loading || downloadingModel}
+                    disabled={loading}
                 >
                     Wyślij i Przejdź do Galerii
                 </Button>
