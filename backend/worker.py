@@ -1,8 +1,8 @@
-import pika, os, io, json, base64, uuid, time, threading, torch
+import pika, os, io, json, base64, uuid, time, threading, torch, shutil
 from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
-from huggingface_hub import scan_cache_dir, repo_exists, repo_info
+from huggingface_hub import scan_cache_dir, repo_exists, repo_info, snapshot_download
 
 class Worker:
     def __init__(self):
@@ -13,6 +13,7 @@ class Worker:
         self.worker_id = uuid.uuid4().hex[:8]  # Unique worker ID
         self.rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
         self.worker_queue = None
+        self.consumer_tags = {}
         # RabbitMQ connection and channel for task processing
         self.connection = None
         self.channel = None
@@ -72,6 +73,28 @@ class Worker:
         else:
             print(f"Model {model_name} is not loaded.")
     
+    def delete_model(self, model_name):
+        if model_name not in self.cached_models:
+            print(f"Model {model_name} is not cached.")
+            return
+        
+        consumer_tag = self.consumer_tags.get(model_name, None)
+        if consumer_tag:
+            self.connection.add_callback_threadsafe(lambda: self.channel.basic_cancel(consumer_tag))
+        
+        del self.consumer_tags[model_name]
+        del self.loaded_models[model_name]
+        self.cached_models.remove(model_name)
+        
+        try:
+            snapshot_path = snapshot_download(model_name, local_files_only=True)
+            model_path = os.path.abspath(os.path.join(snapshot_path, "..", ".."))
+            shutil.rmtree(model_path)
+            print(f"Model {model_name} deleted from cache.")
+        except Exception as e:
+            print(f"Error deleting model {model_name}: {e}")
+            return
+    
     # Download a model from Hugging Face and add bind worker to queue for that model
     def download_model(self, model_name):
         if model_name not in self.cached_models:
@@ -79,8 +102,8 @@ class Worker:
                 self.loaded_models[model_name] = pipeline("image-to-text", model=model_name)
                 self.cached_models.add(model_name)
                 self.bind_to_model(model_name)
-                self.register_new_model_consumer(model_name)
                 self.send_status(status="downloaded", additional_info={"model": model_name})
+                self.register_new_model_consumer(model_name)
                 print(f"Model {model_name} downloaded and added to cache.")
             except Exception as e:
                 print(f"Error downloading model {model_name}: {e}")
@@ -97,6 +120,8 @@ class Worker:
                 threading.Thread(target=self.download_model, args=(model,), daemon=True).start()
             elif action == "unload" and model:
                 threading.Thread(target=self.unload_model, args=(model,), daemon=True).start()
+            elif action == "delete" and model:
+                threading.Thread(target=self.delete_model, args=(model,), daemon=True).start()
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -119,21 +144,23 @@ class Worker:
     # Thread-safe method to register a new model consumer
     def register_new_model_consumer(self, model):
         def callback_wrapper():
-            self.channel.basic_consume(
+            consumer_tag = self.channel.basic_consume(
                 queue=model,
                 on_message_callback=self.callback,
                 auto_ack=False
             )
+            self.consumer_tags[model] = consumer_tag
         self.connection.add_callback_threadsafe(callback_wrapper)
 
     def start_consumer(self):
         try:
             for model in self.cached_models:
-                self.channel.basic_consume(
+                consumer_tag = self.channel.basic_consume(
                     queue=model,
                     on_message_callback=self.callback,
                     auto_ack=False
                 )
+                self.consumer_tags[model] = consumer_tag
             self.channel.start_consuming()
         except KeyboardInterrupt:
             print("Worker stopped by user.")
