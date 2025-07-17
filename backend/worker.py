@@ -80,7 +80,7 @@ class Worker:
                 self.cached_models.add(model_name)
                 self.bind_to_model(model_name)
                 self.register_new_model_consumer(model_name)
-                self.send_status()
+                self.send_status(status="downloaded", additional_info={"model": model_name})
                 print(f"Model {model_name} downloaded and added to cache.")
             except Exception as e:
                 print(f"Error downloading model {model_name}: {e}")
@@ -213,7 +213,7 @@ class Worker:
                 self.cached_models.add(model)
     
     # Send the worker's status to the server
-    def send_status(self, status="online"):
+    def send_status(self, status="online", additional_info={}):
         params = pika.URLParameters(self.rabbitmq_url)
         conn = pika.BlockingConnection(params)
         ch = conn.channel()
@@ -222,7 +222,8 @@ class Worker:
             "worker_id": self.worker_id,
             "available_models": list(self.cached_models),
             "loaded_models": list(self.loaded_models.keys()),
-            "status": status
+            "status": status,
+            **additional_info
         }
         
         ch.exchange_declare(exchange="worker_status_exchange", exchange_type="fanout") # Send status to all servers

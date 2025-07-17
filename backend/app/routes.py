@@ -8,6 +8,7 @@ from utils import is_valid_model
 from rabbitmq import setup_connection, publish_message
 from collections import defaultdict
 from config import SERVER_QUEUE
+from models import download_futures
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ def get_models():
     return {"models": sorted(list(server_models))}
 
 @router.post("/download_model")
-def download_model(worker: str, model: str):
+async def download_model(worker: str, model: str):
     if not is_valid_model(model):
         return {"error": "Model not found or not an image-to-text model."}
     
@@ -37,12 +38,26 @@ def download_model(worker: str, model: str):
     if model in workers[worker]["cached_models"]:
         return {"status": "Model already cached on worker."}
     
+    key=f"{worker}_{model}"
+    loop = asyncio.get_event_loop()
+    fut = loop.create_future()
+    download_futures[key] = fut
+    
     publish_message('worker_control', worker, {
         "action": "download",
         "model": model
     })
 
-    return {"status": "Model download command sent to worker."}
+    try:
+        await asyncio.wait_for(fut, timeout=None)
+    except Exception as e:
+        del download_futures[key]
+        return {"error": f"Failed to download model: {str(e)}"}
+    
+    del download_futures[key]
+
+
+    return {"status": "Model downloaded."}
 
 @router.post("/unload_model")
 def unload_model(worker: str, model: str):

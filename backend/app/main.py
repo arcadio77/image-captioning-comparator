@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes import router
 from rabbitmq import setup_connection
-from models import response_futures, workers, server_models
+from models import response_futures, workers, server_models, download_futures
 import threading, json, time
 
 from config import SERVER_QUEUE, WORKER_TIMEOUT
@@ -57,6 +57,13 @@ def worker_status_listener():
                 workers[worker_id]["cached_models"] = set(available_models)
                 workers[worker_id]["loaded_models"] = set(loaded_models)
                 workers[worker_id]["last_seen"] = time.time()
+            
+            elif worker_id and status == "downloaded":
+                key = f"{worker_id}_{data.get('model', '')}"
+                fut = download_futures.get(key)
+                if fut and not fut.done():
+                    fut.set_result(True)
+
 
             elif worker_id and status == "offline":
                 if worker_id in workers:
