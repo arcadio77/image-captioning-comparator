@@ -133,9 +133,6 @@ function GalleryPage() {
             {images.length === 0 ? (
                 <Box sx={{ mt: 4, textAlign: 'center' }}>
                     <Typography variant="h6" color="text.secondary">Brak przesłanych zdjęć.</Typography>
-                    <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate('/')}>
-                        Prześlij zdjęcia na stronie głównej
-                    </Button>
                 </Box>
             ) : (
                 <Masonry columns={getColumnCount()} spacing={2} sx={{ width: '100%' }}>

@@ -39,15 +39,16 @@ export const ImageDataProvider: React.FC<ChildrenProps> = ({ children }) => {
         });
     }, []);
 
-    const addCaptionToImage = useCallback((file: File, model: string, captionText: string) => {
+    const addCaptionToImage = useCallback((file: File,
+                                           model: string, captionText: string) => {
         setImages(prevImages =>
             prevImages.map(img =>
                 img.file === file
-                    ? { ...img, captions: [...img.captions.filter(c => c.model !== model), { model, text: captionText }] }
+                    ? { ...img, captions: [...img.captions.filter(c => c.model !== model),
+                            { model, text: captionText }] }
                     : img
             )
         );
-        setExplicitModels(prev => (prev.includes(model) ? prev : [...prev, model]));
     }, []);
 
     const reset = useCallback(() => {
@@ -65,13 +66,9 @@ export const ImageDataProvider: React.FC<ChildrenProps> = ({ children }) => {
         setExplicitModels(prev => prev.filter(model => model !== modelName));
     }, []);
 
-    const allModels = useMemo(() => {
-        const fromCaptions = new Set<string>();
-        images.forEach(img => {
-            img.captions.forEach(caption => fromCaptions.add(caption.model));
-        });
-        return Array.from(new Set([...explicitModels, ...Array.from(fromCaptions)]));
-    }, [explicitModels, images]);
+    const models = useMemo(() => {
+        return [...explicitModels];
+    }, [explicitModels]);
 
     const value = useMemo(() => ({
         images,
@@ -79,12 +76,13 @@ export const ImageDataProvider: React.FC<ChildrenProps> = ({ children }) => {
         removeImage,
         addCaptionToImage,
         reset,
-        models: allModels,
+        models,
         addModel,
         removeModel,
         selectedModel,
         setSelectedModel,
-    }), [images, addImage, removeImage, addCaptionToImage, reset, allModels, addModel, removeModel, selectedModel, setSelectedModel]);
+    }), [images, addImage, removeImage, addCaptionToImage, reset, models, addModel, removeModel, selectedModel,
+        setSelectedModel]);
 
     return (
         <ImageDataContext.Provider value={value}>
