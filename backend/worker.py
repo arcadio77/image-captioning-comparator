@@ -13,8 +13,10 @@ class Worker:
         self.worker_id = uuid.uuid4().hex[:8]  # Unique worker ID
         self.rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
         self.worker_queue = None
+        # RabbitMQ connection and channel for task processing
         self.connection = None
         self.channel = None
+        # RabbitMQ connection and channel for control messages (e.g., downloading models)
         self.channel_control = None
         self.connection_control = None
     
@@ -27,6 +29,7 @@ class Worker:
         threading.Thread(target=self.start_control_consumer, daemon=True).start()
         self.start_consumer()
 
+    # Bind the worker to a specific model queue
     def bind_to_model(self, model_name):
         self.channel.queue_declare(queue=model_name, durable=True)
         self.channel.queue_bind(exchange='worker_tasks', queue=model_name, routing_key=model_name)
@@ -68,7 +71,8 @@ class Worker:
             print(f"Model {model_name} unloaded.")
         else:
             print(f"Model {model_name} is not loaded.")
-        
+    
+    # Download a model from Hugging Face and add bind worker to queue for that model
     def download_model(self, model_name):
         if model_name not in self.cached_models:
             try:
@@ -111,7 +115,8 @@ class Worker:
         finally:
             if self.connection_control and not self.connection_control.is_closed:
                 self.connection_control.close()
-            
+    
+    # Thread-safe method to register a new model consumer
     def register_new_model_consumer(self, model):
         def callback_wrapper():
             self.channel.basic_consume(
@@ -186,29 +191,29 @@ class Worker:
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
 
+    # Decode base64 image data
     def decode_image(self, b64_data):
-        # Decode base64 image data
         try:
             return Image.open(io.BytesIO(base64.b64decode(b64_data)))
         except Exception as e:
             print(f"Error decoding image: {e}")
             return None
     
+    # Continuously send status updates to the server
     def status_sender(self):
-        # Continuously send status updates to the server
         while self.sending_status:
             self.send_status(status="online")
             time.sleep(10)
 
+    # Scan the cache directory for models and filter for image-to-text models from huggingface
     def scan_cache(self):
-        # Scan the cache directory for models and filter for image-to-text models from huggingface
         for repo in scan_cache_dir().repos:
             model = repo.repo_id
             if repo_exists(model) and "image-to-text" in repo_info(model).tags:
                 self.cached_models.add(model)
     
+    # Send the worker's status to the server
     def send_status(self, status="online"):
-        # Send the worker's status to the server
         params = pika.URLParameters(self.rabbitmq_url)
         conn = pika.BlockingConnection(params)
         ch = conn.channel()
