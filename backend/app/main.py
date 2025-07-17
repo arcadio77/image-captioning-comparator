@@ -27,6 +27,7 @@ def response_listener():
         channel.basic_ack(delivery_tag=method.delivery_tag)
     
     connection, channel = setup_connection()
+    channel.queue_declare(queue=SERVER_QUEUE)
     channel.basic_consume(queue=SERVER_QUEUE, on_message_callback=callback)
 
     channel.start_consuming()
