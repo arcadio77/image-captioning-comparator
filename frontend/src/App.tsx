@@ -37,6 +37,8 @@ function App() {
     const [alertDialogTitle, setAlertDialogTitle] = useState('');
     const [alertDialogMessage, setAlertDialogMessage] = useState('');
 
+    const [downloadingModel, setDownloadingModel] = useState(false);
+
     const [openModelsDialog, setOpenModelsDialog] = useState(false);
     const [fetchedModels, setFetchedModels] = useState<string[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
@@ -68,13 +70,6 @@ function App() {
         setFetchedModelFilterText('');
     };
 
-    const handleAddText = () => {
-        if (inputText.trim() !== '') {
-            addModel(inputText.trim());
-            setInputText('');
-        }
-    };
-
     const handleDeleteText = (modelToDelete: string) => {
         removeModel(modelToDelete);
     };
@@ -83,6 +78,42 @@ function App() {
         if (files) {
             const filesArray = Array.isArray(files) ? files : [files];
             filesArray.forEach(file => addImage(file));
+        }
+    };
+
+    const handleDownloadModel = async () => {
+        if (inputText.trim() === '') {
+            showAlertDialog("Błąd", "Proszę podać nazwę modelu do pobrania.");
+            return;
+        }
+
+        setDownloadingModel(true);
+        const modelToDownload = inputText.trim();
+        const workerName = "fc9523af";
+
+        try {
+            const response = await axios.post(
+                `${VITE_BASE_URL}download_model`,
+                {},
+                {
+                    params: {
+                        worker: workerName,
+                        model: modelToDownload,
+                    },
+                }
+            );
+
+            if (response.status === 200) {
+                addModel(modelToDownload);
+                setInputText('');
+            } else {
+                showAlertDialog("Błąd", `Wystąpił nieoczekiwany błąd podczas pobierania modelu: ${response.status}`);
+            }
+
+        } catch (error) {
+            console.error('Błąd podczas pobierania modelu:', error);
+        } finally {
+            setDownloadingModel(false);
         }
     };
 
@@ -210,17 +241,6 @@ function App() {
                 Porównaj modele do image captioningu z Hugging Face
             </Typography>
 
-            <Button
-                variant="outlined"
-                color="primary"
-                size="small"
-                sx={{ mt: 2, mb: 2 }}
-                onClick={handleFetchModels}
-                disabled={loading || fetchingModels}
-            >
-                {fetchingModels ? <MuiCircularProgress size={24} /> : "Pobrane modele"}
-            </Button>
-
             <Box
                 sx={{
                     display: 'flex',
@@ -235,24 +255,30 @@ function App() {
                     fullWidth
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                            handleAddText();
-                        }
-                    }}
                     sx={{ mr: 2, border: `1px solid ${theme.palette.divider}`,
                         borderRadius: '4px',}}
                     disabled={loading}
                 />
                 <Button
                     variant="outlined"
-                    onClick={handleAddText}
+                    onClick={handleDownloadModel}
                     size="large"
-                    disabled={loading}
+                    disabled={loading || downloadingModel}
                 >
-                    Dodaj
+                    {downloadingModel ? <MuiCircularProgress size={24} /> : "Pobierz nowy model"}
                 </Button>
             </Box>
+
+            <Button
+                variant="outlined"
+                color="primary"
+                size="small"
+                sx={{ mt: 2, mb: 2 }}
+                onClick={handleFetchModels}
+                disabled={loading || fetchingModels}
+            >
+                {fetchingModels ? <MuiCircularProgress size={24} /> : "Dodaj modele"}
+            </Button>
 
             <Box
                 sx={{
@@ -351,7 +377,7 @@ function App() {
                     size="large"
                     sx={{ mt: 2 }}
                     onClick={handleSend}
-                    disabled={loading}
+                    disabled={loading || downloadingModel}
                 >
                     Wyślij i Przejdź do Galerii
                 </Button>
