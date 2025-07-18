@@ -1,26 +1,29 @@
-import { useState, useEffect, useMemo } from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {
-    Container,
-    TextField,
+    Box,
     Button,
+    Chip,
+    CircularProgress as MuiCircularProgress,
+    Container,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Grid,
+    IconButton,
     List,
     ListItem,
-    ListItemText,
-    IconButton,
-    Box,
-    Typography,
-    Chip,
-    Dialog, DialogTitle, DialogContent, DialogActions,
     ListItemButton,
-    CircularProgress as MuiCircularProgress,
-    Grid,
+    ListItemText,
+    TextField,
+    Typography,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FileUploader from "./FileUploader.tsx";
-import { useImageData } from './ImageDataContext';
-import { useNavigate } from 'react-router-dom';
-import { VITE_BASE_URL } from './utils.ts';
+import {useImageData} from './ImageDataContext';
+import {useNavigate} from 'react-router-dom';
+import {VITE_BASE_URL} from './utils.ts';
 import axios from 'axios';
 
 function App() {
@@ -29,8 +32,6 @@ function App() {
     const { addImage, removeImage, images, models, addCaptionToImage, reset, setSelectedModel, addModel, removeModel } = useImageData();
 
     const navigate = useNavigate();
-
-    const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
 
     const [openAlertDialog, setOpenAlertDialog] = useState(false);
@@ -43,7 +44,6 @@ function App() {
 
     const [modelFilterText, setModelFilterText] = useState('');
     const [fetchedModelFilterText, setFetchedModelFilterText] = useState('');
-
 
     const showAlertDialog = (title: string, message: string) => {
         setAlertDialogTitle(title);
@@ -66,13 +66,6 @@ function App() {
         setFetchedModels([]);
         setModelFilterText('');
         setFetchedModelFilterText('');
-    };
-
-    const handleAddText = () => {
-        if (inputText.trim() !== '') {
-            addModel(inputText.trim());
-            setInputText('');
-        }
     };
 
     const handleDeleteText = (modelToDelete: string) => {
@@ -99,7 +92,7 @@ function App() {
         } finally {
             setFetchingModels(false);
         }
-    }
+    };
 
     const handleAddAllModelsFromFetched = () => {
         fetchedModels.forEach(model => addModel(model));
@@ -212,47 +205,22 @@ function App() {
 
             <Button
                 variant="outlined"
+                onClick={() => navigate('/models')}
+                sx={{ mb: 0 }}
+                disabled={loading || fetchingModels}
+            >
+                Zarządzaj workerami
+            </Button>
+
+            <Button
+                variant="outlined"
                 color="primary"
-                size="small"
                 sx={{ mt: 2, mb: 2 }}
                 onClick={handleFetchModels}
                 disabled={loading || fetchingModels}
             >
-                {fetchingModels ? <MuiCircularProgress size={24} /> : "Pobrane modele"}
+                {fetchingModels ? <MuiCircularProgress size={24} /> : "Dodaj modele"}
             </Button>
-
-            <Box
-                sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
-                    mb: 3,
-                }}
-            >
-                <TextField
-                    label="Przekopiuj nazwę modelu"
-                    variant="standard"
-                    fullWidth
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                            handleAddText();
-                        }
-                    }}
-                    sx={{ mr: 2, border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: '4px',}}
-                    disabled={loading}
-                />
-                <Button
-                    variant="outlined"
-                    onClick={handleAddText}
-                    size="large"
-                    disabled={loading}
-                >
-                    Dodaj
-                </Button>
-            </Box>
 
             <Box
                 sx={{
@@ -348,7 +316,6 @@ function App() {
             ) : (
                 <Button
                     variant="outlined"
-                    size="large"
                     sx={{ mt: 2 }}
                     onClick={handleSend}
                     disabled={loading}
@@ -359,7 +326,6 @@ function App() {
             <Button
                 variant="outlined"
                 color="error"
-                size="small"
                 sx={{
                     mt: 2,
                     '&:hover': {

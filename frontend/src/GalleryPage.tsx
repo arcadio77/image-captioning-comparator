@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
     Container,
     Box,
@@ -11,7 +11,7 @@ import {
     CardContent,
     useMediaQuery,
     useTheme,
-    CircularProgress, IconButton,
+    IconButton,
 } from '@mui/material';
 import { Masonry } from '@mui/lab';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
@@ -20,11 +20,56 @@ import { useImageData } from './ImageDataContext';
 import { useNavigate } from 'react-router-dom';
 
 function GalleryPage() {
-    const { images, models, selectedModel, setSelectedModel, addCaptionToImage, reset } = useImageData();
+    const { images, models, selectedModel, setSelectedModel, reset } = useImageData();
     const navigate = useNavigate();
     const theme = useTheme();
     const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
     const isMediumScreen = useMediaQuery(theme.breakpoints.down('md'));
+
+    const downloadFile = (data: string, filename: string, type: string) => {
+        const blob = new Blob([data], { type: type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const exportToCsv = () => {
+        if (images.length === 0) return;
+
+        let csvContent = "Nazwa Zdjęcia,Model,Opis\n"; // Headers
+
+        images.forEach(image => {
+            image.captions.forEach(caption => {
+                const fileName = `"${image.file.name.replace(/"/g, '""')}"`;
+                const modelName = `"${caption.model.replace(/"/g, '""')}"`;
+                const description = `"${caption.text.replace(/"/g, '""')}"`;
+                csvContent += `${fileName},${modelName},${description}\n`;
+            });
+        });
+
+        downloadFile(csvContent, 'captions.csv', 'text/csv;charset=utf-8;');
+    };
+
+    const exportToJson = () => {
+        if (images.length === 0) return;
+
+        const data = images.map(image => ({
+            fileName: image.file.name,
+            captions: image.captions.map(caption => ({
+                model: caption.model,
+                text: caption.text
+            }))
+        }));
+
+        const jsonContent = JSON.stringify(data, null, 2);
+        downloadFile(jsonContent, 'captions.json', 'application/json');
+    };
+
 
     const getColumnCount = () => {
         if (isSmallScreen) return 1;
@@ -55,39 +100,23 @@ function GalleryPage() {
         }
     }, [models, selectedModel, setSelectedModel]);
 
-    const [generatingCaptions, setGeneratingCaptions] = useState(false);
-
-    useEffect(() => {
-        const generateAllCaptions = async () => {
-            if (images.length === 0 || !selectedModel) {
-                setGeneratingCaptions(false);
-                return;
-            }
-
-            setGeneratingCaptions(true);
-            for (const img of images) {
-                const existingCaption = img.captions.find(c => c.model === selectedModel);
-                console.log(selectedModel);
-                if (!existingCaption) {
-                    const caption = img.captions.find(c => c.model === selectedModel);
-                    console.log(caption);
-                    const captionText = caption?.text;
-                    console.log(captionText);
-                    if (captionText != null) {
-                        addCaptionToImage(img.file, selectedModel, captionText);
-                    }
-                }
-            }
-            setGeneratingCaptions(false);
-        };
-
-        generateAllCaptions();
-    }, [images, selectedModel, addCaptionToImage]);
-
     const handleGoHomeAndReset = () => {
         reset();
         navigate('/');
     };
+
+    const imagesWithUrls = useMemo(() => {
+        return images.map(image => ({
+            ...image,
+            previewUrl: URL.createObjectURL(image.file)
+        }));
+    }, [images]);
+
+    useEffect(() => {
+        return () => {
+            imagesWithUrls.forEach(image => URL.revokeObjectURL(image.previewUrl));
+        };
+    }, [imagesWithUrls]);
 
 
     return (
@@ -96,8 +125,8 @@ function GalleryPage() {
                 Galeria Zdjęć z Opisami
             </Typography>
 
-            <Box sx={{ mb: 3, width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
-                <IconButton onClick={() => handleModelNavigation('prev')} disabled={models.length <= 1 || generatingCaptions}>
+            <Box sx={{ mb: 3, width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                <IconButton onClick={() => handleModelNavigation('prev')} disabled={models.length <= 1}>
                     <ArrowBackIosIcon />
                 </IconButton>
                 <TextField
@@ -106,7 +135,7 @@ function GalleryPage() {
                     value={selectedModel || ''}
                     onChange={handleModelChange}
                     sx={{ minWidth: 250 }}
-                    disabled={models.length === 0 || generatingCaptions}
+                    disabled={models.length <= 1}
                 >
                     {models.length === 0 ? (
                         <MenuItem value="" disabled>Brak dostępnych modeli</MenuItem>
@@ -118,17 +147,19 @@ function GalleryPage() {
                         ))
                     )}
                 </TextField>
-                <IconButton onClick={() => handleModelNavigation('next')} disabled={models.length <= 1 || generatingCaptions}>
+                <IconButton onClick={() => handleModelNavigation('next')} disabled={models.length <= 1}>
                     <ArrowForwardIosIcon />
                 </IconButton>
             </Box>
 
-            {generatingCaptions && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <CircularProgress size={20} sx={{ mr: 1 }} />
-                    <Typography>Generowanie opisów dla modelu "{selectedModel}"...</Typography>
-                </Box>
-            )}
+            <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Button variant="outlined" onClick={exportToCsv} disabled={images.length === 0}>
+                    Eksportuj do CSV
+                </Button>
+                <Button variant="outlined" onClick={exportToJson} disabled={images.length === 0}>
+                    Eksportuj do JSON
+                </Button>
+            </Box>
 
             {images.length === 0 ? (
                 <Box sx={{ mt: 4, textAlign: 'center' }}>
@@ -136,8 +167,8 @@ function GalleryPage() {
                 </Box>
             ) : (
                 <Masonry columns={getColumnCount()} spacing={2} sx={{ width: '100%' }}>
-                    {images.map((image, index) => (
-                        <Card key={index} raised sx={{ display: 'flex', flexDirection: 'column' }}>
+                    {imagesWithUrls.map((image) => (
+                        <Card key={image.file.name + image.file.size} raised sx={{ display: 'flex', flexDirection: 'column' }}>
                             <CardMedia
                                 component="img"
                                 image={image.previewUrl}

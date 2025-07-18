@@ -8,6 +8,7 @@ from utils import is_valid_model
 from rabbitmq import setup_connection, publish_message
 from collections import defaultdict
 from config import SERVER_QUEUE
+from models import download_futures, connections, channels
 
 router = APIRouter()
 
@@ -26,8 +27,38 @@ def get_models():
     print(server_models)
     return {"models": sorted(list(server_models))}
 
+@router.delete("/delete_model")
+async def delete_model(worker, model: str):
+    if not is_valid_model(model):
+        return {"error": "Model not found or not an image-to-text model."}
+    if worker not in workers:
+        return {"error": "Worker not found."}
+    if model not in workers[worker]["cached_models"]:
+        return {"error": "Model not cached on worker."}
+    
+    publish_message('worker_control', worker, {
+        "action": "delete",
+        "model": model
+    })
+
+    model_available = False
+    for worker_id, worker_info in workers.items():
+        if worker == worker_id: continue
+
+        if model in worker_info["cached_models"]:
+            model_available = True
+            break
+    
+    if not model_available:
+        _, channel = setup_connection()
+        channel.queue_delete(queue=model)
+        channel.close()
+
+
+    return {"status": "Model deletion command sent to worker."}
+
 @router.post("/download_model")
-def download_model(worker: str, model: str):
+async def download_model(worker: str, model: str):
     if not is_valid_model(model):
         return {"error": "Model not found or not an image-to-text model."}
     
@@ -37,12 +68,26 @@ def download_model(worker: str, model: str):
     if model in workers[worker]["cached_models"]:
         return {"status": "Model already cached on worker."}
     
+    key=f"{worker}_{model}"
+    loop = asyncio.get_event_loop()
+    fut = loop.create_future()
+    download_futures[key] = fut
+    
     publish_message('worker_control', worker, {
         "action": "download",
         "model": model
     })
 
-    return {"status": "Model download command sent to worker."}
+    try:
+        await asyncio.wait_for(fut, timeout=None)
+    except Exception as e:
+        del download_futures[key]
+        return {"error": f"Failed to download model: {str(e)}"}
+    
+    del download_futures[key]
+
+
+    return {"status": "Model downloaded."}
 
 @router.post("/unload_model")
 def unload_model(worker: str, model: str):
@@ -69,7 +114,8 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
     futures = {f"{file_id}_{model}": loop.create_future() for file_id in ids for model in valid_models}
     response_futures.update(futures)
 
-    connection, channel = setup_connection()
+    if not connections.get("default") or not channels.get("default"):
+        connections["default"], channels["default"] = setup_connection()
 
     for i, file in enumerate(files):
         file_id = ids[i]
@@ -77,7 +123,7 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
         b64 = base64.b64encode(content).decode('utf-8')
 
         for model in valid_models:
-            channel.basic_publish(
+            channels["default"].basic_publish(
                 exchange='worker_tasks',
                 routing_key=model,
                 body=json.dumps({"id": file_id, "image": b64, "model": model}),
@@ -106,8 +152,6 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
             if "results" in item:
                 combined["results"].extend(item["results"])
         merged_results.append(combined)
-
-    connection.close()
 
     return {"results": merged_results}
     # Streaming response
