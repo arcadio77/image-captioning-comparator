@@ -41,6 +41,20 @@ async def delete_model(worker, model: str):
         "model": model
     })
 
+    model_available = False
+    for worker_id, worker_info in workers.items():
+        if worker == worker_id: continue
+
+        if model in worker_info["cached_models"]:
+            model_available = True
+            break
+    
+    if not model_available:
+        _, channel = setup_connection()
+        channel.queue_delete(queue=model)
+        channel.close()
+
+
     return {"status": "Model deletion command sent to worker."}
 
 @router.post("/download_model")
