@@ -36,6 +36,7 @@ function ModelsPage() {
     const navigate = useNavigate();
 
     const [inputText, setInputText] = useState('');
+
     const [openAlertDialog, setOpenAlertDialog] = useState(false);
     const [alertDialogTitle, setAlertDialogTitle] = useState('');
     const [alertDialogMessage, setAlertDialogMessage] = useState('');
@@ -286,7 +287,7 @@ function ModelsPage() {
                 }}
             >
                 <Typography variant="h6" component="h2" gutterBottom sx={{ textAlign: 'center' }}>
-                    Modele zapisane w pamięci podręcznej na wybranym workerze ({selectedWorkerId || 'Nie wybrano workera'}):
+                    Modele pobrane na wybranym workerze:
                 </Typography>
                 <TextField
                     label="Filtruj modele"
@@ -301,7 +302,7 @@ function ModelsPage() {
 
                 {filteredAndSortedWorkerModels.length === 0 ? (
                     <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
-                        {selectedWorkerId ? "Brak modeli w pamięci na tym workerze lub brak dopasowania do filtra." : "Wybierz workera, aby wyświetlić modele w pamięci podręcznej."}
+                        {selectedWorkerId ? "Brak modeli w pamięci na tym workerze lub brak dopasowania do filtra." : "Wybierz workera, aby wyświetlić modele."}
                     </Typography>
                 ) : (
                     <List sx={{ width: '100%' }}>

@@ -207,6 +207,7 @@ function App() {
                 variant="outlined"
                 onClick={() => navigate('/models')}
                 sx={{ mb: 0 }}
+                disabled={loading || fetchingModels}
             >
                 Zarządzaj workerami
             </Button>
@@ -214,7 +215,6 @@ function App() {
             <Button
                 variant="outlined"
                 color="primary"
-                size="small"
                 sx={{ mt: 2, mb: 2 }}
                 onClick={handleFetchModels}
                 disabled={loading || fetchingModels}
@@ -316,7 +316,6 @@ function App() {
             ) : (
                 <Button
                     variant="outlined"
-                    size="large"
                     sx={{ mt: 2 }}
                     onClick={handleSend}
                     disabled={loading}
@@ -327,7 +326,6 @@ function App() {
             <Button
                 variant="outlined"
                 color="error"
-                size="small"
                 sx={{
                     mt: 2,
                     '&:hover': {
