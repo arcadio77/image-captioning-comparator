@@ -8,7 +8,7 @@ from utils import is_valid_model
 from rabbitmq import setup_connection, publish_message
 from collections import defaultdict
 from config import SERVER_QUEUE
-from models import download_futures
+from models import download_futures, connections, channels
 
 router = APIRouter()
 
@@ -40,6 +40,20 @@ async def delete_model(worker, model: str):
         "action": "delete",
         "model": model
     })
+
+    model_available = False
+    for worker_id, worker_info in workers.items():
+        if worker == worker_id: continue
+
+        if model in worker_info["cached_models"]:
+            model_available = True
+            break
+    
+    if not model_available:
+        _, channel = setup_connection()
+        channel.queue_delete(queue=model)
+        channel.close()
+
 
     return {"status": "Model deletion command sent to worker."}
 
@@ -100,7 +114,8 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
     futures = {f"{file_id}_{model}": loop.create_future() for file_id in ids for model in valid_models}
     response_futures.update(futures)
 
-    connection, channel = setup_connection()
+    if not connections.get("default") or not channels.get("default"):
+        connections["default"], channels["default"] = setup_connection()
 
     for i, file in enumerate(files):
         file_id = ids[i]
@@ -108,7 +123,7 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
         b64 = base64.b64encode(content).decode('utf-8')
 
         for model in valid_models:
-            channel.basic_publish(
+            channels["default"].basic_publish(
                 exchange='worker_tasks',
                 routing_key=model,
                 body=json.dumps({"id": file_id, "image": b64, "model": model}),
@@ -137,8 +152,6 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
             if "results" in item:
                 combined["results"].extend(item["results"])
         merged_results.append(combined)
-
-    connection.close()
 
     return {"results": merged_results}
     # Streaming response
