@@ -82,8 +82,10 @@ class Worker:
         if consumer_tag:
             self.connection.add_callback_threadsafe(lambda: self.channel.basic_cancel(consumer_tag))
         
-        del self.consumer_tags[model_name]
-        del self.loaded_models[model_name]
+        if model_name in self.consumer_tags:
+            del self.consumer_tags[model_name]
+        if model_name in self.loaded_models:
+            del self.loaded_models[model_name]
         self.cached_models.remove(model_name)
         
         try:
@@ -94,16 +96,24 @@ class Worker:
         except Exception as e:
             print(f"Error deleting model {model_name}: {e}")
             return
+        
+    def consume_model(self, model):
+        consumer_tag = self.channel.basic_consume(
+            queue=model,
+            on_message_callback=self.callback,
+            auto_ack=False
+        )
+        self.consumer_tags[model] = consumer_tag
     
-    # Download a model from Hugging Face and add bind worker to queue for that model
+    # Download a model from Hugging Face and bind worker to queue for that model
     def download_model(self, model_name):
         if model_name not in self.cached_models:
             try:
                 self.loaded_models[model_name] = pipeline("image-to-text", model=model_name)
                 self.cached_models.add(model_name)
-                self.bind_to_model(model_name)
+                self.connection.add_callback_threadsafe(lambda: self.bind_to_model(model_name))
+                self.connection.add_callback_threadsafe(lambda: self.consume_model(model_name))
                 self.send_status(status="downloaded", additional_info={"model": model_name})
-                self.register_new_model_consumer(model_name)
                 print(f"Model {model_name} downloaded and added to cache.")
             except Exception as e:
                 print(f"Error downloading model {model_name}: {e}")
@@ -140,17 +150,6 @@ class Worker:
         finally:
             if self.connection_control and not self.connection_control.is_closed:
                 self.connection_control.close()
-    
-    # Thread-safe method to register a new model consumer
-    def register_new_model_consumer(self, model):
-        def callback_wrapper():
-            consumer_tag = self.channel.basic_consume(
-                queue=model,
-                on_message_callback=self.callback,
-                auto_ack=False
-            )
-            self.consumer_tags[model] = consumer_tag
-        self.connection.add_callback_threadsafe(callback_wrapper)
 
     def start_consumer(self):
         try:
