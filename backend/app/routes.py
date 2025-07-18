@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, UploadFile, HTTPException
 from typing import List
 import base64, json, asyncio
 from pika import BasicProperties
@@ -24,17 +24,16 @@ def get_workers():
 
 @router.get("/models")
 def get_models():
-    print(server_models)
     return {"models": sorted(list(server_models))}
 
 @router.delete("/delete_model")
 async def delete_model(worker, model: str):
     if not is_valid_model(model):
-        return {"error": "Model not found or not an image-to-text model."}
+        raise HTTPException(status_code=400, detail="Model not found or not an image-to-text model.")
     if worker not in workers:
-        return {"error": "Worker not found."}
+        raise HTTPException(status_code=404, detail="Worker not found.")
     if model not in workers[worker]["cached_models"]:
-        return {"error": "Model not cached on worker."}
+        raise HTTPException(status_code=404, detail="Model not cached on worker.")
     
     publish_message('worker_control', worker, {
         "action": "delete",
@@ -57,16 +56,16 @@ async def delete_model(worker, model: str):
 
     return {"status": "Model deletion command sent to worker."}
 
-@router.post("/download_model")
+@router.post("/download_model") 
 async def download_model(worker: str, model: str):
     if not is_valid_model(model):
-        return {"error": "Model not found or not an image-to-text model."}
+        raise HTTPException(status_code=400, detail="Model not found or not an image-to-text model.")
     
     if not worker in workers:
-        return {"error": "Worker not found."}
+        raise HTTPException(status_code=404, detail="Worker not found.")
 
     if model in workers[worker]["cached_models"]:
-        return {"status": "Model already cached on worker."}
+        raise HTTPException(status_code=400, detail="Model already cached on worker.")
     
     key=f"{worker}_{model}"
     loop = asyncio.get_event_loop()
@@ -82,7 +81,7 @@ async def download_model(worker: str, model: str):
         await asyncio.wait_for(fut, timeout=None)
     except Exception as e:
         del download_futures[key]
-        return {"error": f"Failed to download model: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Error downloading model: {str(e)}")
     
     del download_futures[key]
 
@@ -92,9 +91,9 @@ async def download_model(worker: str, model: str):
 @router.post("/unload_model")
 def unload_model(worker: str, model: str):
     if worker not in workers:
-        return {"error": "Worker not found."}
+        raise HTTPException(status_code=404, detail="Worker not found.")
     if model not in workers[worker]["loaded_models"]:
-        return {"error": "Model not loaded on worker."}
+        raise HTTPException(status_code=404, detail="Model not loaded on worker.")
     
     publish_message('worker_control', worker, {
         "action": "unload",
@@ -114,15 +113,15 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
     futures = {f"{file_id}_{model}": loop.create_future() for file_id in ids for model in valid_models}
     response_futures.update(futures)
 
-    if not connections.get("default") or not channels.get("default"):
-        connections["default"], channels["default"] = setup_connection()
-
     for i, file in enumerate(files):
         file_id = ids[i]
         content = await file.read()
         b64 = base64.b64encode(content).decode('utf-8')
 
         for model in valid_models:
+            if not connections.get("default") or not channels.get("default") or not channels["default"].is_open:
+                connections["default"], channels["default"] = setup_connection()
+
             channels["default"].basic_publish(
                 exchange='worker_tasks',
                 routing_key=model,
@@ -156,16 +155,14 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
     return {"results": merged_results}
     # Streaming response
     # async def result_stream():
-    #     try:
-    #         # map future -> file_id
-    #         future_to_id = {fut: fid for fid, fut in futures.items()}
-    #         for fut in asyncio.as_completed(futures.values()):
-    #             try:
-    #                 result = await fut
-    #             except asyncio.TimeoutError:
-    #                 result = {"id": future_to_id[fut], "error": "Timeout"}
-    #             yield (json.dumps(result) + "\n").encode("utf-8")
-    #     finally:
-    #         conn.close()
+    #     # map future -> file_id
+    #     future_to_id = {fut: fid for fid, fut in futures.items()}
+    #     for fut in asyncio.as_completed(futures.values()):
+    #         try:
+    #             result = await fut
+    #         except asyncio.TimeoutError:
+    #             result = {"id": future_to_id[fut], "error": "Timeout"}
+    #         yield (json.dumps(result) + "\n").encode("utf-8")
 
+    # from fastapi.responses import StreamingResponse
     # return StreamingResponse(result_stream(), media_type="application/json")
