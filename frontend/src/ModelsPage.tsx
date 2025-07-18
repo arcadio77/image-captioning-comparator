@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {
     Box,
     Button,
@@ -181,7 +181,7 @@ function ModelsPage() {
         }
     };
 
-    const filteredAndSortedWorkerModels = useMemo(() => {
+    const filteredAndSortedWorkerModels = (() => {
         const sorted = [...workerSpecificCachedModels].sort((a, b) => a.localeCompare(b));
         if (!modelFilterText) {
             return sorted;
@@ -189,7 +189,7 @@ function ModelsPage() {
         return sorted.filter(model =>
             model.toLowerCase().includes(modelFilterText.toLowerCase())
         );
-    }, [workerSpecificCachedModels, modelFilterText]);
+    })();
 
     return (
         <Container
