@@ -2,3 +2,5 @@
 *.xml
 *.pyc
 backend/.env
+*/venv
+*/__pycache__
