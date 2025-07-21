@@ -18,24 +18,18 @@ const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 export default function Root() {
     const [mode, setMode] = useState<'light' | 'dark'>('light');
 
-    const colorMode = useMemo(
-        () => ({
+    const colorMode = useMemo(() => ({
             toggleColorMode: () => {
                 setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
             },
-        }),
-        [],
-    );
+        }), []);
 
-    const theme = useMemo(
-        () =>
+    const theme = useMemo(() =>
             createTheme({
                 palette: {
                     mode,
                 },
-            }),
-        [mode],
-    );
+            }), [mode]);
 
     return (
         <StrictMode>
@@ -59,7 +53,7 @@ export default function Root() {
                             <Routes>
                                 <Route path="/" element={<App />} />
                                 <Route path="/gallery" element={<GalleryPage />} />
-                                <Route path="/models" element={<WorkersPage />} />
+                                <Route path="/workers" element={<WorkersPage />} />
                             </Routes>
                         </AppProvider>
                     </BrowserRouter>

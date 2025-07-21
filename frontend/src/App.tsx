@@ -205,7 +205,7 @@ function App() {
 
             <Button
                 variant="outlined"
-                onClick={() => navigate('/models')}
+                onClick={() => navigate('/workers')}
                 sx={{ mb: 0 }}
                 disabled={loading || fetchingModels}
             >
