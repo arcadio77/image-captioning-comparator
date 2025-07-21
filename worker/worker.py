@@ -3,6 +3,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
 from huggingface_hub import scan_cache_dir, repo_exists, repo_info, snapshot_download
+from huggingface_hub.errors import CacheNotFound
 
 class Worker:
     def __init__(self):
@@ -22,19 +23,42 @@ class Worker:
         self.connection_control = None
     
     def start(self):
+        print(f"Starting worker with ID: {self.worker_id}")
         self.scan_cache()
         self.setup_connection()
         for model in self.cached_models:
             self.bind_to_model(model)
         threading.Thread(target=self.status_sender, daemon=True).start()
         threading.Thread(target=self.start_control_consumer, daemon=True).start()
-        self.start_consumer()
+        if self.cached_models:
+            self.start_consumer()
+        else:
+            while not self.cached_models:
+                time.sleep(5)
+            self.setup_task_connection()
+            self.rebind_to_models()
+            self.start_consumer()
 
     # Bind the worker to a specific model queue
     def bind_to_model(self, model_name):
         self.channel.queue_declare(queue=model_name, durable=True)
         self.channel.queue_bind(exchange='worker_tasks', queue=model_name, routing_key=model_name)
 
+    def setup_task_connection(self):
+        if not self.connection or not self.connection.is_open:
+            params = pika.URLParameters(self.rabbitmq_url)
+            self.connection = pika.BlockingConnection(params)
+            self.channel = self.connection.channel()
+            self.channel.exchange_declare(exchange='worker_tasks', exchange_type='topic')
+    
+    def rebind_to_models(self):
+        if not self.connection or not self.connection.is_open:
+            self.setup_task_connection()
+        
+        for model in self.cached_models:
+           self.bind_to_model(model)
+           self.consume_model(model)
+            
 
     def setup_connection(self):
         params = pika.URLParameters(self.rabbitmq_url)
@@ -160,12 +184,15 @@ class Worker:
                     auto_ack=False
                 )
                 self.consumer_tags[model] = consumer_tag
+            
             self.channel.start_consuming()
+                
         except KeyboardInterrupt:
             print("Worker stopped by user.")
         except Exception as e:
             print(f"Error in worker: {e}")
         finally:
+            print("Closing RabbitMQ connection...")
             if self.connection and not self.connection.is_closed:
                 self.send_status(status="offline")
                 self.connection.close()
@@ -233,7 +260,12 @@ class Worker:
 
     # Scan the cache directory for models and filter for image-to-text models from huggingface
     def scan_cache(self):
-        for repo in scan_cache_dir().repos:
+        try:
+            repos = scan_cache_dir().repos
+        except CacheNotFound:
+            self.cached_models = set()
+            return
+        for repo in repos:
             model = repo.repo_id
             if repo_exists(model) and "image-to-text" in repo_info(model).tags:
                 self.cached_models.add(model)

@@ -1,0 +1,27 @@
+services:
+  backend:
+    image: icc-server
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend/src:/app/server
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+
+  worker:
+    image: icc-worker
+    build:
+      context: worker
+      dockerfile: Dockerfile
+    volumes:
+      - ./worker:/app/worker
+      - ./worker/hf_cache:/models/hf_cache
+    environment:
+      - HF_HOME=/models/hf_cache
+    env_file:
+      - worker/.env
+    depends_on:
+      - backend

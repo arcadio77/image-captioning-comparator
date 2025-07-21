@@ -1,6 +1,7 @@
 *.iml
 *.xml
 *.pyc
-backend/.env
+*/.env
 */venv
 */__pycache__
+*/hf_cache
