@@ -2,4 +2,4 @@
 /imgs
 /__pycache__
 .env
-/app/__pycache__
+/src/__pycache__
