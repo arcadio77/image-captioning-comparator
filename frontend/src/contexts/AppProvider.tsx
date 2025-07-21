@@ -1,18 +1,8 @@
-import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
-import type {ImageWithCaptions, ImageDataContextType, ChildrenProps} from './types';
+import React, { useState, useMemo, useCallback } from 'react';
+import type {ImageWithCaptions, ChildrenProps} from '../utils/types.ts';
+import { AppContext } from './AppContext.tsx';
 
-const ImageDataContext = createContext<ImageDataContextType | undefined>(undefined);
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const useImageData = () => {
-    const context = useContext(ImageDataContext);
-    if (context === undefined) {
-        throw new Error('useImageData must be used within an ImageDataProvider');
-    }
-    return context;
-};
-
-export const ImageDataProvider: React.FC<ChildrenProps> = ({ children }) => {
+export const AppProvider: React.FC<ChildrenProps> = ({ children }) => {
     const [images, setImages] = useState<ImageWithCaptions[]>([]);
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
     const [explicitModels, setExplicitModels] = useState<string[]>([]);
@@ -85,8 +75,8 @@ export const ImageDataProvider: React.FC<ChildrenProps> = ({ children }) => {
         setSelectedModel]);
 
     return (
-        <ImageDataContext.Provider value={value}>
+        <AppContext.Provider value={value}>
             {children}
-        </ImageDataContext.Provider>
+        </AppContext.Provider>
     );
 };

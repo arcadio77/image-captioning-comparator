@@ -16,11 +16,11 @@ import {
 import { Masonry } from '@mui/lab';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
-import { useImageData } from './ImageDataContext';
+import { useAppContext } from '../contexts/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 
 function GalleryPage() {
-    const { images, models, selectedModel, setSelectedModel, reset } = useImageData();
+    const { images, models, selectedModel, setSelectedModel, reset } = useAppContext();
     const navigate = useNavigate();
     const theme = useTheme();
     const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));

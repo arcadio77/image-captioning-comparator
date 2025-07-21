@@ -22,7 +22,7 @@ import {
 import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {useNavigate} from 'react-router-dom';
-import {VITE_BASE_URL} from './utils';
+import {VITE_BASE_URL} from '../utils/utils.ts';
 import axios from 'axios';
 
 interface WorkerInfo {
