@@ -31,7 +31,7 @@ interface WorkerInfo {
     loaded_models: string[];
 }
 
-function ModelsPage() {
+function WorkersPage() {
     const theme = useTheme();
     const navigate = useNavigate();
 
@@ -352,4 +352,4 @@ function ModelsPage() {
     );
 }
 
-export default ModelsPage;
+export default WorkersPage;
