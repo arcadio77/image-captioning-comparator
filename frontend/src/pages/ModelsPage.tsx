@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {
     Box,
     Button,
@@ -22,7 +22,7 @@ import {
 import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {useNavigate} from 'react-router-dom';
-import {VITE_BASE_URL} from './utils';
+import {VITE_BASE_URL} from '../utils/utils.ts';
 import axios from 'axios';
 
 interface WorkerInfo {
@@ -182,7 +182,7 @@ function ModelsPage() {
         }
     };
 
-    const filteredAndSortedWorkerModels = (() => {
+    const filteredAndSortedWorkerModels = useMemo(() => {
         const sorted = [...workerSpecificCachedModels].sort((a, b) => a.localeCompare(b));
         if (!modelFilterText) {
             return sorted;
@@ -190,7 +190,7 @@ function ModelsPage() {
         return sorted.filter(model =>
             model.toLowerCase().includes(modelFilterText.toLowerCase())
         );
-    })();
+    }, [workerSpecificCachedModels, modelFilterText]);
 
     return (
         <Container

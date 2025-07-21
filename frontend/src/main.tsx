@@ -2,8 +2,7 @@ import React, { StrictMode, useState, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
-import GalleryPage from './GalleryPage.tsx';
-import { ImageDataProvider } from './ImageDataContext.tsx';
+import GalleryPage from './pages/GalleryPage.tsx';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -11,12 +10,12 @@ import IconButton from '@mui/material/IconButton';
 import Box from '@mui/material/Box';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
-import ModelsPage from "./ModelsPage.tsx";
+import ModelsPage from "./pages/ModelsPage.tsx";
+import { AppProvider } from "./contexts/AppProvider.tsx";
 
 const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 
-// eslint-disable-next-line react-refresh/only-export-components
-function Root() {
+export default function Root() {
     const [mode, setMode] = useState<'light' | 'dark'>('light');
 
     const colorMode = useMemo(
@@ -56,13 +55,13 @@ function Root() {
                                 {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
                             </IconButton>
                         </Box>
-                        <ImageDataProvider>
+                        <AppProvider>
                             <Routes>
                                 <Route path="/" element={<App />} />
                                 <Route path="/gallery" element={<GalleryPage />} />
                                 <Route path="/models" element={<ModelsPage />} />
                             </Routes>
-                        </ImageDataProvider>
+                        </AppProvider>
                     </BrowserRouter>
                 </ThemeProvider>
             </ColorModeContext.Provider>

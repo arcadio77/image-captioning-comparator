@@ -6,7 +6,7 @@ export interface ImageWithCaptions {
     captions: { model: string; text: string }[];
 }
 
-export interface ImageDataContextType {
+export interface AppContextType {
     images: ImageWithCaptions[];
     addImage: (file: File) => void;
     removeImage: (fileToRemove: File) => void;

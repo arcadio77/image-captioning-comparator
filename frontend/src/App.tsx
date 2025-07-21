@@ -20,16 +20,16 @@ import {
 } from '@mui/material';
 import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
-import FileUploader from "./FileUploader.tsx";
-import {useImageData} from './ImageDataContext';
+import FileUploader from "./utils/FileUploader.tsx";
+import {useAppContext} from './contexts/AppContext.tsx';
 import {useNavigate} from 'react-router-dom';
-import {VITE_BASE_URL} from './utils.ts';
+import {VITE_BASE_URL} from './utils/utils.ts';
 import axios from 'axios';
 
 function App() {
     const theme = useTheme();
 
-    const { addImage, removeImage, images, models, addCaptionToImage, reset, setSelectedModel, addModel, removeModel } = useImageData();
+    const { addImage, removeImage, images, models, addCaptionToImage, reset, setSelectedModel, addModel, removeModel } = useAppContext();
 
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
