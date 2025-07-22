@@ -1,0 +1,12 @@
+services:
+  backend:
+    image: icc-server
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend/src:/app/server
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env

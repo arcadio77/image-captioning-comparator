@@ -115,13 +115,13 @@ def startup_event():
 
 @app.on_event("shutdown")
 def shutdown_event():
-    for channel in channels.values():
-        if channel.is_open:
-            channel.close()
-    
     for connection in connections.values():
-        if connection.is_open:
+        if connection and connection.is_open:
             connection.close()
+
+    for channel in channels.values():
+        if channel and channel.is_open:
+            channel.close()
 
     response_futures.clear()
     download_futures.clear()

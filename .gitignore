@@ -1,4 +1,8 @@
 *.iml
 *.xml
 *.pyc
-backend/.env
+*/.env
+*/venv
+*/__pycache__
+worker/hf_cache/*
+!worker/hf_cache/.gitkeep

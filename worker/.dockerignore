@@ -1,0 +1,5 @@
+venv/
+__pycache__/
+.gitignore
+worker/hf_cache/*
+!worker/hf_cache/.gitkeep

@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, HTTPException
 from typing import List
 import base64, json, asyncio
 from pika import BasicProperties
+from pika.exceptions import StreamLostError
 
 from models import workers, server_models, response_futures
 from utils import is_valid_model
@@ -119,19 +120,16 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
         b64 = base64.b64encode(content).decode('utf-8')
 
         for model in valid_models:
-            if not connections.get("default") or not channels.get("default") or not channels["default"].is_open:
-                connections["default"], channels["default"] = setup_connection()
-
-            channels["default"].basic_publish(
+            publish_message(
                 exchange='worker_tasks',
                 routing_key=model,
-                body=json.dumps({"id": file_id, "image": b64, "model": model}),
+                message={"id": file_id, "image": b64, "model": model},
                 properties=BasicProperties(
                     correlation_id=f"{file_id}_{model}",
                     reply_to=SERVER_QUEUE
                 )
             )
-    
+
     async def wait_for_responses(file_id, fut):
         return await asyncio.wait_for(fut, timeout=None)
         
