@@ -322,8 +322,6 @@ class Worker:
             body=json.dumps(msg)
         )
 
-        self.logger.info(f"Status sent: {msg}")
-
         conn.close()
 
 if __name__ == "__main__":
