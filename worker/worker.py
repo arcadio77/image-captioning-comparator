@@ -54,6 +54,7 @@ class Worker:
                     self.start_consumer()
                 time.sleep(3)
             except KeyboardInterrupt:
+                self.send_status(status="offline")
                 self.logger.info("Worker stopped by user.")
                 break
 
@@ -131,6 +132,7 @@ class Worker:
             snapshot_path = snapshot_download(model_name, local_files_only=True)
             model_path = os.path.abspath(os.path.join(snapshot_path, "..", ".."))
             shutil.rmtree(model_path)
+            self.send_status()
             self.logger.info(f"Model {model_name} deleted from cache.")
         except Exception as e:
             self.logger.error(f"Error deleting model {model_name}: {e}")
@@ -151,6 +153,7 @@ class Worker:
             try:
                 self.loaded_models[model_name] = pipeline("image-to-text", model=model_name)
                 self.cached_models.add(model_name)
+                self.setup_task_connection()
                 self.connection.add_callback_threadsafe(lambda: self.bind_to_model(model_name))
                 self.connection.add_callback_threadsafe(lambda: self.consume_model(model_name))
                 self.send_status(status="downloaded", additional_info={"model": model_name})
@@ -216,7 +219,6 @@ class Worker:
             self.is_consuming = False
             self.logger.info("Closing RabbitMQ connection...")
             if self.connection and not self.connection.is_closed:
-                self.send_status(status="offline")
                 self.connection.close()
     
     def callback(self, ch, method, properties, body):
