@@ -38,7 +38,6 @@ function WorkersPage() {
     const [alertDialogTitle, setAlertDialogTitle] = useState('');
     const [alertDialogMessage, setAlertDialogMessage] = useState('');
 
-    const [downloadingModel, setDownloadingModel] = useState(false);
     const [deletingModel, setDeletingModel] = useState(false);
 
     const [modelFilterText, setModelFilterText] = useState('');
@@ -146,7 +145,6 @@ function WorkersPage() {
             return;
         }
 
-        setDownloadingModel(true);
         setWorkerDownloading(selectedWorkerId, true);
         const modelToDownload = inputText.trim();
         try {
@@ -175,7 +173,6 @@ function WorkersPage() {
                 showAlertDialog("Błąd", `Nie udało się pobrać modelu: ${String(error)}`);
             }
         } finally {
-            setDownloadingModel(false);
             setWorkerDownloading(selectedWorkerId, false);
         }
     };
@@ -260,7 +257,7 @@ function WorkersPage() {
                         border: `1px solid ${theme.palette.divider}`,
                         borderRadius: '4px',
                     }}
-                    disabled={downloadingModel || !selectedWorkerId || fetchingWorkers}
+                    disabled={isThisWorkerDownloading || !selectedWorkerId || fetchingWorkers}
                 />
                 <Button
                     variant="outlined"
