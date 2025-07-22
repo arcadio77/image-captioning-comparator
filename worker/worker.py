@@ -1,4 +1,4 @@
-import pika, os, io, json, base64, uuid, time, threading, torch, shutil, sys
+import pika, os, io, json, base64, uuid, time, threading, torch, shutil, sys, logging
 from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
@@ -40,6 +40,26 @@ class Worker:
     def setup_logger(self):
         logger.remove()
         logger.add(sys.stderr, enqueue=True)
+
+        class InterceptHandler(logging.Handler):
+            def emit(self, record):
+                try:
+                    level = logger.level(record.levelname).name
+                except ValueError:
+                    level = record.levelno
+                logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+        
+        logging.root.handlers = []
+        logging.root.setLevel(logging.DEBUG)
+
+        logging.basicConfig(
+            level=logging.WARNING,
+            handlers=[InterceptHandler()]
+        )
+
+        for name in logging.root.manager.loggerDict:
+            logging.getLogger(name).handlers = []
+            logging.getLogger(name).propagate = True
 
         return logger
 
