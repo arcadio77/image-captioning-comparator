@@ -21,6 +21,8 @@ class Worker:
         # RabbitMQ connection and channel for control messages (e.g., downloading models)
         self.channel_control = None
         self.connection_control = None
+        # Flag to indicate if the worker is consuming messages from task queues
+        self.is_consuming = False
     
     def start(self):
         print(f"Starting worker with ID: {self.worker_id}")
@@ -30,14 +32,16 @@ class Worker:
             self.bind_to_model(model)
         threading.Thread(target=self.status_sender, daemon=True).start()
         threading.Thread(target=self.start_control_consumer, daemon=True).start()
-        if self.cached_models:
-            self.start_consumer()
-        else:
-            while not self.cached_models:
-                time.sleep(5)
-            self.setup_task_connection()
-            self.rebind_to_models()
-            self.start_consumer()
+        self.watch_model_availability()
+
+    def watch_model_availability(self):
+        while True:
+            if self.cached_models and not self.is_consuming:
+                self.setup_task_connection()
+                self.rebind_to_models()
+                self.is_consuming = True
+                self.start_consumer()
+            time.sleep(3)
 
     # Bind the worker to a specific model queue
     def bind_to_model(self, model_name):
@@ -192,6 +196,7 @@ class Worker:
         except Exception as e:
             print(f"Error in worker: {e}")
         finally:
+            self.is_consuming = False   
             print("Closing RabbitMQ connection...")
             if self.connection and not self.connection.is_closed:
                 self.send_status(status="offline")
