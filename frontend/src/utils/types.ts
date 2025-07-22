@@ -30,6 +30,8 @@ export interface WorkersContextType {
     setWorkers: (workers: WorkerInfo[]) => void;
     downloading: Record<string, boolean>;
     setWorkerDownloading: (workerId: string, isDownloading: boolean) => void;
+    downloadingModelName: Record<string, string>;
+    setWorkerDownloadingModelName: (workerId: string, modelName: string) => void;
     addModel: (workerId: string, model: string) => void;
     removeModel: (workerId: string, model: string) => void;
 }

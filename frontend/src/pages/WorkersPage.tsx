@@ -30,7 +30,8 @@ function WorkersPage() {
     const theme = useTheme();
     const navigate = useNavigate();
 
-    const {workers, setWorkers, downloading, setWorkerDownloading, addModel, removeModel} = useWorkersContext();
+    const {workers, setWorkers, downloading, setWorkerDownloading, downloadingModelName,
+        setWorkerDownloadingModelName, addModel, removeModel} = useWorkersContext();
 
     const [inputText, setInputText] = useState('');
 
@@ -46,6 +47,7 @@ function WorkersPage() {
     const [fetchingWorkers, setFetchingWorkers] = useState(false);
 
     const isThisWorkerDownloading = downloading[selectedWorkerId] || false;
+    const currentDownloadingModelForSelectedWorker = downloadingModelName[selectedWorkerId] || '';
 
     const [workerSpecificCachedModels, setWorkerSpecificCachedModels] = useState<string[]>([]);
     const [workerSpecificLoadedModels, setWorkerSpecificLoadedModels] = useState<string[]>([]);
@@ -85,6 +87,18 @@ function WorkersPage() {
             setWorkerSpecificLoadedModels([]);
         }
     }, [selectedWorkerId, workers]);
+
+    useEffect(() => {
+        if (selectedWorkerId && isThisWorkerDownloading && currentDownloadingModelForSelectedWorker) {
+            setInputText(currentDownloadingModelForSelectedWorker);
+        }
+    }, [selectedWorkerId, currentDownloadingModelForSelectedWorker]);
+
+    useEffect(() => {
+        if (selectedWorkerId && !isThisWorkerDownloading) {
+            setInputText('');
+        }
+    }, [selectedWorkerId]);
 
 
     const showAlertDialog = (title: string, message: string) => {
@@ -147,6 +161,7 @@ function WorkersPage() {
 
         setWorkerDownloading(selectedWorkerId, true);
         const modelToDownload = inputText.trim();
+        setWorkerDownloadingModelName(selectedWorkerId, modelToDownload);
         try {
             const response = await axios.post(
                 `${VITE_BASE_URL}download_model`,
@@ -206,7 +221,7 @@ function WorkersPage() {
             <Button
                 variant="outlined"
                 onClick={() => navigate('/')}
-                sx={{ mb: 0 }}
+                sx={{ mb: 1 }}
             >
                 Powrót
             </Button>
@@ -221,7 +236,12 @@ function WorkersPage() {
                 }}
             >
                 <FormControl sx={{ minWidth: 120 }} size="small" disabled={fetchingWorkers}>
-                    <InputLabel id="worker-select-label">Worker</InputLabel>
+                    <InputLabel id="worker-select-label" sx={{
+                        transform: 'translate(14px, 12px) scale(1)',
+                        '&.MuiInputLabel-shrink': {
+                            transform: 'translate(14px, -9px) scale(0.75)',
+                        },
+                    }}>Worker</InputLabel>
                     <Select
                         labelId="worker-select-label"
                         id="worker-select"
@@ -229,6 +249,10 @@ function WorkersPage() {
                         label="Worker"
                         onChange={(e) => setSelectedWorkerId(e.target.value as string)}
                         required
+                        sx={{
+                            minWidth: 100,
+                            height: 48,
+                        }}
                     >
                         {fetchingWorkers ? (
                             <MenuItem disabled>
@@ -253,7 +277,6 @@ function WorkersPage() {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     sx={{
-                        mr: 2,
                         border: `1px solid ${theme.palette.divider}`,
                         borderRadius: '4px',
                     }}
@@ -264,6 +287,10 @@ function WorkersPage() {
                     onClick={handleDownloadModel}
                     size="large"
                     disabled={isThisWorkerDownloading || !selectedWorkerId || inputText.trim() === '' || fetchingWorkers}
+                    sx={{
+                        minWidth: 130,
+                        height: 48,
+                    }}
                 >
                     {isThisWorkerDownloading ? <MuiCircularProgress size={24} /> : "Pobierz model"}
                 </Button>

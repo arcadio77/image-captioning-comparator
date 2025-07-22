@@ -5,12 +5,20 @@ import {WorkersContext} from "./WorkersContext.tsx";
 export const WorkersProvider: React.FC<ChildrenProps> = ({ children }) => {
     const [workers, setWorkers] = useState<WorkerInfo[]>([]);
     const [downloading, setDownloading] = useState<Record<string, boolean>>({});
+    const [downloadingModelName, setDownloadingModelName] = useState<Record<string, string>>({});
 
     const setWorkerDownloading = useCallback((workerId: string, isDownloading: boolean) => {
         setDownloading(prev => ({
             ...prev,
             [workerId]: isDownloading,
         }));
+    }, []);
+
+    const setWorkerDownloadingModelName = useCallback((workerId: string, modelName: string) => {
+        setDownloadingModelName(prev => ({
+            ...prev,
+            [workerId]: modelName,
+        }))
     }, []);
 
     const addModel = useCallback((workerId: string, modelName: string) => {
@@ -54,9 +62,12 @@ export const WorkersProvider: React.FC<ChildrenProps> = ({ children }) => {
         setWorkers,
         downloading,
         setWorkerDownloading,
+        downloadingModelName,
+        setWorkerDownloadingModelName,
         addModel,
         removeModel,
-    }), [workers, setWorkers, downloading, setWorkerDownloading, addModel, removeModel]);
+    }), [workers, setWorkers, downloading, setWorkerDownloading, downloadingModelName, setWorkerDownloadingModelName,
+        addModel, removeModel]);
 
     return (
         <WorkersContext.Provider value={value}>
