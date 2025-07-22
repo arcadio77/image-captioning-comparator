@@ -1,9 +1,10 @@
-import pika, os, io, json, base64, uuid, time, threading, torch, shutil
+import pika, os, io, json, base64, uuid, time, threading, torch, shutil, sys
 from PIL import Image
 from dotenv import load_dotenv
 from transformers import pipeline
 from huggingface_hub import scan_cache_dir, repo_exists, repo_info, snapshot_download
 from huggingface_hub.errors import CacheNotFound
+from loguru import logger
 
 class Worker:
     def __init__(self):
@@ -15,6 +16,7 @@ class Worker:
         self.rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2f")
         self.worker_queue = None
         self.consumer_tags = {}
+        self.is_running = True
         # RabbitMQ connection and channel for task processing
         self.connection = None
         self.channel = None
@@ -23,39 +25,53 @@ class Worker:
         self.connection_control = None
         # Flag to indicate if the worker is consuming messages from task queues
         self.is_consuming = False
+        self.logger = self.setup_logger()
+        
+        self.logger.info(f"Worker initialized with ID: {self.worker_id}")
+        
     
     def start(self):
-        print(f"Starting worker with ID: {self.worker_id}")
         self.scan_cache()
-        self.setup_connection()
-        for model in self.cached_models:
-            self.bind_to_model(model)
+        self.setup_control_connection()
         threading.Thread(target=self.status_sender, daemon=True).start()
         threading.Thread(target=self.start_control_consumer, daemon=True).start()
         self.watch_model_availability()
 
+    def setup_logger(self):
+        logger.remove()
+        logger.add(sys.stderr, enqueue=True)
+
+        return logger
+
     def watch_model_availability(self):
-        while True:
-            if self.cached_models and not self.is_consuming:
-                self.setup_task_connection()
-                self.rebind_to_models()
-                self.is_consuming = True
-                self.start_consumer()
-            time.sleep(3)
+        while self.is_running:
+            try:
+                if self.cached_models and not self.is_consuming:
+                    self.logger.info("Starting worker consumer...")
+                    self.setup_task_connection()
+                    self.bind_to_models()
+                    self.is_consuming = True
+                    self.start_consumer()
+                time.sleep(3)
+            except KeyboardInterrupt:
+                self.logger.info("Worker stopped by user.")
+                break
 
     # Bind the worker to a specific model queue
     def bind_to_model(self, model_name):
+        self.logger.info(f"Binding to model: {model_name}")
         self.channel.queue_declare(queue=model_name, durable=True)
         self.channel.queue_bind(exchange='worker_tasks', queue=model_name, routing_key=model_name)
 
     def setup_task_connection(self):
+        self.logger.info(f"Setting up RabbitMQ connection...")
         if not self.connection or not self.connection.is_open:
             params = pika.URLParameters(self.rabbitmq_url)
             self.connection = pika.BlockingConnection(params)
             self.channel = self.connection.channel()
             self.channel.exchange_declare(exchange='worker_tasks', exchange_type='topic')
     
-    def rebind_to_models(self):
+    def bind_to_models(self):
         if not self.connection or not self.connection.is_open:
             self.setup_task_connection()
         
@@ -64,16 +80,11 @@ class Worker:
            self.consume_model(model)
             
 
-    def setup_connection(self):
+    def setup_control_connection(self):
         params = pika.URLParameters(self.rabbitmq_url)
-        connection = None
+        connection_control = None
 
         try:
-            connection = pika.BlockingConnection(params)
-            channel = connection.channel()
-
-            channel.exchange_declare(exchange='worker_tasks', exchange_type='topic') # Exchange for inference tasks
-            
             connection_control = pika.BlockingConnection(params)
             channel_control = connection_control.channel()
             channel_control.exchange_declare(exchange='worker_control', exchange_type='topic') # Exchange for controlling workers e.g. downloading models 
@@ -81,15 +92,15 @@ class Worker:
             channel_control.queue_bind(exchange='worker_control', queue=f'worker_{self.worker_id}', routing_key=f'{self.worker_id}')
             self.worker_queue = f'worker_{self.worker_id}'
 
-            self.connection = connection
-            self.channel = channel
             self.connection_control = connection_control
             self.channel_control = channel_control
 
+            self.logger.info(f"RabbitMQ control connection established.")
+
         except Exception as e:
-            print(f"Error setting up RabbitMQ connection: {e}")
-            if connection and not connection.is_closed:
-                connection.close()
+            self.logger.error(f"Error setting up RabbitMQ controll connection: {e}")
+            if connection_control and not connection_control.is_closed:
+                connection_control.close()
             raise e
         
     def unload_model(self, model_name):
@@ -97,13 +108,13 @@ class Worker:
             del self.loaded_models[model_name]
             torch.cuda.empty_cache()  # Clear GPU memory if using CUDA
             self.send_status()
-            print(f"Model {model_name} unloaded.")
+            self.logger.info(f"Model {model_name} unloaded.")
         else:
-            print(f"Model {model_name} is not loaded.")
+            self.logger.warning(f"Model {model_name} is not loaded. Cannot unload.")
     
     def delete_model(self, model_name):
         if model_name not in self.cached_models:
-            print(f"Model {model_name} is not cached.")
+            self.logger.warning(f"Model {model_name} is not cached. Cannot delete.")
             return
         
         consumer_tag = self.consumer_tags.get(model_name, None)
@@ -120,9 +131,9 @@ class Worker:
             snapshot_path = snapshot_download(model_name, local_files_only=True)
             model_path = os.path.abspath(os.path.join(snapshot_path, "..", ".."))
             shutil.rmtree(model_path)
-            print(f"Model {model_name} deleted from cache.")
+            self.logger.info(f"Model {model_name} deleted from cache.")
         except Exception as e:
-            print(f"Error deleting model {model_name}: {e}")
+            self.logger.error(f"Error deleting model {model_name}: {e}")
             return
         
     def consume_model(self, model):
@@ -131,6 +142,7 @@ class Worker:
             on_message_callback=self.callback,
             auto_ack=False
         )
+        self.logger.info(f"Started consuming messages for model: {model}")
         self.consumer_tags[model] = consumer_tag
     
     # Download a model from Hugging Face and bind worker to queue for that model
@@ -142,24 +154,26 @@ class Worker:
                 self.connection.add_callback_threadsafe(lambda: self.bind_to_model(model_name))
                 self.connection.add_callback_threadsafe(lambda: self.consume_model(model_name))
                 self.send_status(status="downloaded", additional_info={"model": model_name})
-                print(f"Model {model_name} downloaded and added to cache.")
+                self.logger.info(f"Model {model_name} downloaded and added to cache.")
             except Exception as e:
-                print(f"Error downloading model {model_name}: {e}")
+                self.logger.error(f"Error downloading model {model_name}: {e}")
         else:
-            print(f"Model {model_name} is already cached.")
+            self.logger.warning(f"Model {model_name} is already cached. Skipping download.")
 
     def start_control_consumer(self):
         def control_callback(ch, method, properties, body):
             message = json.loads(body)
             action = message.get("action", "")
             model = message.get("model", "")
-
+            self.logger.info(f"Received control message: {message}")
             if action == "download" and model:
                 threading.Thread(target=self.download_model, args=(model,), daemon=True).start()
             elif action == "unload" and model:
                 threading.Thread(target=self.unload_model, args=(model,), daemon=True).start()
             elif action == "delete" and model:
                 threading.Thread(target=self.delete_model, args=(model,), daemon=True).start()
+            else:
+                self.logger.warning(f"Unknown action: {action} for model: {model}")
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -169,13 +183,15 @@ class Worker:
                 on_message_callback=control_callback,
                 auto_ack=False
             )
-
+            self.logger.info("Control consumer started. Waiting for control messages...")
             self.channel_control.start_consuming()
         except KeyboardInterrupt:
-            print("Control consumer stopped by user.")
+            self.logger.info("Control consumer stopped by user.")
         except Exception as e:
             print(f"Error in control consumer: {e}")
+            self.logger.error(f"Error in control consumer: {e}")
         finally:
+            self.logger.info("Closing control RabbitMQ connection...")
             if self.connection_control and not self.connection_control.is_closed:
                 self.connection_control.close()
 
@@ -188,16 +204,17 @@ class Worker:
                     auto_ack=False
                 )
                 self.consumer_tags[model] = consumer_tag
-            
+            self.logger.info(f"Started consuming messages for models: {', '.join(self.cached_models)}")
             self.channel.start_consuming()
                 
         except KeyboardInterrupt:
-            print("Worker stopped by user.")
+            self.logger.info("Worker stopped by user.")
+            self.is_running = False
         except Exception as e:
-            print(f"Error in worker: {e}")
+            self.logger.error(f"Error in worker consumer: {e}")
         finally:
-            self.is_consuming = False   
-            print("Closing RabbitMQ connection...")
+            self.is_consuming = False
+            self.logger.info("Closing RabbitMQ connection...")
             if self.connection and not self.connection.is_closed:
                 self.send_status(status="offline")
                 self.connection.close()
@@ -207,28 +224,32 @@ class Worker:
         image = self.decode_image(message.get("image", None))
         file_id = message.get("id", "unknown")
         model = message.get("model", "")
+
+        self.logger.info(f"Received message for file ID: {file_id} with model: {model}")
         
         if not image:
+            self.logger.warning(f"Invalid image data for file ID: {file_id}. Skipping processing.")
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
         results = []
 
-        print(f"Processing model: {model} for file ID: {file_id}")
+        self.logger.info(f"Processing model {model} for file ID: {file_id}")
         if model not in self.loaded_models:
             try:
                 self.loaded_models[model] = pipeline("image-to-text", model=model)
+                self.logger.info(f"Model {model} loaded successfully.")
             except Exception as e:
-                print(f"Error loading model {model}: {e}")
+                self.logger.error(f"Error loading model {model}: {e}")
                 return
         
         pipe = self.loaded_models[model]
         try:
             result = pipe(image)[0]["generated_text"]
-            print(f"Model: {model}, Result: {result}")
+            self.logger.info(f"Caption generated for {file_id} using {model}: {result}")
             results.append({"model": model, "caption": result})
         except Exception as e:
-            print(f"Error processing image with model {model}: {e}")
+            self.logger.error(f"Error processing image with model {model}: {e}")
             results.append({"model": model, "caption": str(e)})
 
         response_body = json.dumps({
@@ -254,7 +275,7 @@ class Worker:
         try:
             return Image.open(io.BytesIO(base64.b64decode(b64_data)))
         except Exception as e:
-            print(f"Error decoding image: {e}")
+            self.logger.error(f"Error decoding image: {e}")
             return None
     
     # Continuously send status updates to the server
@@ -269,11 +290,14 @@ class Worker:
             repos = scan_cache_dir().repos
         except CacheNotFound:
             self.cached_models = set()
+            self.logger.warning("Cache directory not found. No models cached.")
             return
         for repo in repos:
             model = repo.repo_id
             if repo_exists(model) and "image-to-text" in repo_info(model).tags:
                 self.cached_models.add(model)
+        
+        self.logger.info(f"Cached models: {self.cached_models}")
     
     # Send the worker's status to the server
     def send_status(self, status="online", additional_info={}):
@@ -297,6 +321,8 @@ class Worker:
             routing_key='',
             body=json.dumps(msg)
         )
+
+        self.logger.info(f"Status sent: {msg}")
 
         conn.close()
 
