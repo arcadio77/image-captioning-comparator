@@ -24,16 +24,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import {useNavigate} from 'react-router-dom';
 import {VITE_BASE_URL} from '../utils/utils.ts';
 import axios from 'axios';
-
-interface WorkerInfo {
-    id: string;
-    cached_models: string[];
-    loaded_models: string[];
-}
+import {useWorkersContext} from "../contexts/WorkersContext.tsx";
 
 function WorkersPage() {
     const theme = useTheme();
     const navigate = useNavigate();
+
+    const {workers, setWorkers, downloading, setWorkerDownloading, addModel, removeModel} = useWorkersContext();
 
     const [inputText, setInputText] = useState('');
 
@@ -46,9 +43,10 @@ function WorkersPage() {
 
     const [modelFilterText, setModelFilterText] = useState('');
 
-    const [availableWorkers, setAvailableWorkers] = useState<WorkerInfo[]>([]);
     const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
     const [fetchingWorkers, setFetchingWorkers] = useState(false);
+
+    const isThisWorkerDownloading = downloading[selectedWorkerId] || false;
 
     const [workerSpecificCachedModels, setWorkerSpecificCachedModels] = useState<string[]>([]);
     const [workerSpecificLoadedModels, setWorkerSpecificLoadedModels] = useState<string[]>([]);
@@ -57,7 +55,7 @@ function WorkersPage() {
         setFetchingWorkers(true);
         try {
             const response = await axios.get(`${VITE_BASE_URL}workers`);
-            setAvailableWorkers(response.data.workers);
+            setWorkers(response.data.workers);
             if (response.data.workers.length === 1) {
                 setSelectedWorkerId(response.data.workers[0].id);
             }
@@ -74,8 +72,8 @@ function WorkersPage() {
     }, []);
 
     useEffect(() => {
-        if (selectedWorkerId && availableWorkers.length > 0) {
-            const worker = availableWorkers.find(w => w.id === selectedWorkerId);
+        if (selectedWorkerId && workers.length > 0) {
+            const worker = workers.find(w => w.id === selectedWorkerId);
             if (worker) {
                 setWorkerSpecificCachedModels(worker.cached_models);
                 setWorkerSpecificLoadedModels(worker.loaded_models);
@@ -87,7 +85,7 @@ function WorkersPage() {
             setWorkerSpecificCachedModels([]);
             setWorkerSpecificLoadedModels([]);
         }
-    }, [selectedWorkerId, availableWorkers]);
+    }, [selectedWorkerId, workers]);
 
 
     const showAlertDialog = (title: string, message: string) => {
@@ -121,8 +119,7 @@ function WorkersPage() {
             );
 
             if (response.status === 200) {
-                showAlertDialog("Sukces", `Polecenie usunięcia modelu "${modelToDelete}" wysłane do workera "${selectedWorkerId}".`);
-                fetchWorkers();
+                removeModel(selectedWorkerId, modelToDelete);
             } else {
                 showAlertDialog("Błąd", `Nieoczekiwany błąd podczas usuwania: ${response.status}`);
             }
@@ -150,6 +147,7 @@ function WorkersPage() {
         }
 
         setDownloadingModel(true);
+        setWorkerDownloading(selectedWorkerId, true);
         const modelToDownload = inputText.trim();
         try {
             const response = await axios.post(
@@ -164,9 +162,8 @@ function WorkersPage() {
             );
 
             if (response.status === 200) {
-                showAlertDialog("Sukces", `Polecenie pobrania modelu "${modelToDownload}" wysłane do workera "${selectedWorkerId}".`);
                 setInputText('');
-                fetchWorkers();
+                addModel(selectedWorkerId, modelToDownload);
             } else {
                 showAlertDialog("Błąd", `Nieoczekiwany błąd podczas pobierania: ${response.status}`);
             }
@@ -179,6 +176,7 @@ function WorkersPage() {
             }
         } finally {
             setDownloadingModel(false);
+            setWorkerDownloading(selectedWorkerId, false);
         }
     };
 
@@ -239,10 +237,10 @@ function WorkersPage() {
                             <MenuItem disabled>
                                 <MuiCircularProgress size={16} sx={{ mr: 1 }} /> Ładowanie
                             </MenuItem>
-                        ) : availableWorkers.length === 0 ? (
+                        ) : workers.length === 0 ? (
                             <MenuItem value="" disabled>Brak dostępnych workerów</MenuItem>
                         ) : (
-                            availableWorkers.map((worker) => (
+                            workers.map((worker) => (
                                 <MenuItem key={worker.id} value={worker.id}>
                                     {worker.id}
                                 </MenuItem>
@@ -268,9 +266,9 @@ function WorkersPage() {
                     variant="outlined"
                     onClick={handleDownloadModel}
                     size="large"
-                    disabled={downloadingModel || !selectedWorkerId || inputText.trim() === '' || fetchingWorkers}
+                    disabled={isThisWorkerDownloading || !selectedWorkerId || inputText.trim() === '' || fetchingWorkers}
                 >
-                    {downloadingModel ? <MuiCircularProgress size={24} /> : "Pobierz model"}
+                    {isThisWorkerDownloading ? <MuiCircularProgress size={24} /> : "Pobierz model"}
                 </Button>
             </Box>
 

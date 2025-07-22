@@ -12,6 +12,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import WorkersPage from "./pages/WorkersPage.tsx";
 import { AppProvider } from "./contexts/AppProvider.tsx";
+import {WorkersProvider} from "./contexts/WorkersProvider.tsx";
 
 const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 
@@ -50,11 +51,13 @@ export default function Root() {
                             </IconButton>
                         </Box>
                         <AppProvider>
+                        <WorkersProvider>
                             <Routes>
                                 <Route path="/" element={<App />} />
                                 <Route path="/gallery" element={<GalleryPage />} />
                                 <Route path="/workers" element={<WorkersPage />} />
                             </Routes>
+                        </WorkersProvider>
                         </AppProvider>
                     </BrowserRouter>
                 </ThemeProvider>
