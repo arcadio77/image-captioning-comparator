@@ -67,7 +67,10 @@ def worker_status_listener():
                 key = f"{worker_id}_{data.get('model', '')}"
                 fut = download_futures.get(key)
                 if fut and not fut.done():
-                    fut.set_result(True)
+                    if "error" in data:
+                        fut.set_exception(Exception(data["error"]))
+                    else:
+                        fut.set_result(True)
 
 
             elif worker_id and status == "offline":

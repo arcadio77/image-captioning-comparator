@@ -133,11 +133,7 @@ class Worker:
         else:
             self.logger.warning(f"Model {model_name} is not loaded. Cannot unload.")
     
-    def delete_model(self, model_name):
-        if model_name not in self.cached_models:
-            self.logger.warning(f"Model {model_name} is not cached. Cannot delete.")
-            return
-        
+    def delete_model(self, model_name):    
         consumer_tag = self.consumer_tags.get(model_name, None)
         if consumer_tag:
             self.connection.add_callback_threadsafe(lambda: self.channel.basic_cancel(consumer_tag))
@@ -146,8 +142,12 @@ class Worker:
             del self.consumer_tags[model_name]
         if model_name in self.loaded_models:
             del self.loaded_models[model_name]
-        self.cached_models.remove(model_name)
         
+        try:
+            self.cached_models.remove(model_name)
+        except KeyError:
+            self.logger.warning(f"Model {model_name} not found in cached models.")
+
         try:
             snapshot_path = snapshot_download(model_name, local_files_only=True)
             model_path = os.path.abspath(os.path.join(snapshot_path, "..", ".."))
@@ -155,7 +155,16 @@ class Worker:
             self.send_status()
             self.logger.info(f"Model {model_name} deleted from cache.")
         except Exception as e:
-            self.logger.error(f"Error deleting model {model_name}: {e}")
+            cache_dir = os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+            formatted_model_name = model_name.replace("/", "--")
+            model_cache_dir = os.path.join(cache_dir, "hub", f"models--{formatted_model_name}")
+
+            if os.path.exists(model_cache_dir):
+                try:
+                    shutil.rmtree(model_cache_dir)
+                    self.logger.info(f"Model {model_name} deleted from cache.")
+                except Exception as e:
+                    self.logger.error(f"Error deleting model {model_name} from cache directory: {e}")
             return
         
     def consume_model(self, model):
@@ -180,6 +189,8 @@ class Worker:
                 self.logger.info(f"Model {model_name} downloaded and added to cache.")
             except Exception as e:
                 self.logger.error(f"Error downloading model {model_name}: {e}")
+                self.delete_model(model_name)
+                self.send_status(status="downloaded", additional_info={"model": model_name, "error": str(e)})
         else:
             self.logger.warning(f"Model {model_name} is already cached. Skipping download.")
 
