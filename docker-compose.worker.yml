@@ -1,6 +1,7 @@
 services:
   worker:
     image: icc-worker
+    tty: true
     build:
       context: worker
       dockerfile: Dockerfile

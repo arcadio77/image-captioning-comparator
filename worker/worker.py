@@ -171,7 +171,7 @@ class Worker:
     def download_model(self, model_name):
         if model_name not in self.cached_models:
             try:
-                self.loaded_models[model_name] = pipeline("image-to-text", model=model_name)
+                self.loaded_models[model_name] = pipeline("image-to-text", model=model_name, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
                 self.cached_models.add(model_name)
                 self.setup_task_connection()
                 self.connection.add_callback_threadsafe(lambda: self.bind_to_model(model_name))
@@ -259,7 +259,7 @@ class Worker:
         self.logger.info(f"Processing model {model} for file ID: {file_id}")
         if model not in self.loaded_models:
             try:
-                self.loaded_models[model] = pipeline("image-to-text", model=model)
+                self.loaded_models[model] = pipeline("image-to-text", model=model, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
                 self.logger.info(f"Model {model} loaded successfully.")
             except Exception as e:
                 self.logger.error(f"Error loading model {model}: {e}")
@@ -295,7 +295,7 @@ class Worker:
     # Decode base64 image data
     def decode_image(self, b64_data):
         try:
-            return Image.open(io.BytesIO(base64.b64decode(b64_data)))
+            return Image.open(io.BytesIO(base64.b64decode(b64_data))).convert("RGB")
         except Exception as e:
             self.logger.error(f"Error decoding image: {e}")
             return None
