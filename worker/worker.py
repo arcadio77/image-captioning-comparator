@@ -146,7 +146,7 @@ class Worker:
         try:
             self.cached_models.remove(model_name)
         except KeyError:
-            self.logger.warning(f"Model {model_name} not found in cached models.")
+            self.logger.warning(f"Model {model_name} not found in cached models. ")
 
         try:
             snapshot_path = snapshot_download(model_name, local_files_only=True)
@@ -180,7 +180,11 @@ class Worker:
     def download_model(self, model_name):
         if model_name not in self.cached_models:
             try:
-                self.loaded_models[model_name] = pipeline("image-to-text", model=model_name, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+                repo = repo_info(model_name)
+                if "image-text-to-text" in repo.tags:
+                    self.loaded_models[model_name] = pipeline("image-text-to-text", trust_remote_code=True, model=model_name, device_map="auto", torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+                elif "image-to-text" in repo.tags:
+                    self.loaded_models[model_name] = pipeline("image-to-text", trust_remote_code=True, model=model_name, device_map="auto", torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
                 self.cached_models.add(model_name)
                 self.setup_task_connection()
                 self.connection.add_callback_threadsafe(lambda: self.bind_to_model(model_name))
@@ -270,7 +274,10 @@ class Worker:
         self.logger.info(f"Processing model {model} for file ID: {file_id}")
         if model not in self.loaded_models:
             try:
-                self.loaded_models[model] = pipeline("image-to-text", model=model, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+                if "image-text-to-text" in repo_info(model).tags:
+                    self.loaded_models[model] = pipeline("image-text-to-text", model=model, trust_remote_code=True, device_map="auto", torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+                elif "image-to-text" in repo_info(model).tags:
+                    self.loaded_models[model] = pipeline("image-to-text", model=model, trust_remote_code=True, device_map="auto", torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
                 self.logger.info(f"Model {model} loaded successfully.")
             except Exception as e:
                 self.logger.error(f"Error loading model {model}: {e}")
@@ -278,7 +285,27 @@ class Worker:
         
         pipe = self.loaded_models[model]
         try:
-            result = pipe(image)[0]["generated_text"]
+            if "image-text-to-text" in repo_info(model).tags:
+                message = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": image},
+                            {"type": "text", "text": "Generate a caption for the image."}
+                        ]
+                    }
+                ]
+                output = pipe(text=message)
+                self.logger.debug(f"Output from model {model}: {output}")
+                result = ""
+                for item in output:
+                    for message in item.get('generated_text', []):
+                        if message.get('role') == 'assistant':
+                            result = message.get('content')
+                            break
+                result = result if result else "No caption generated."
+            elif "image-to-text" in repo_info(model).tags:
+                result = pipe(image)[0]["generated_text"]
             self.logger.info(f"Caption generated for {file_id} using {model}: {result}")
             results.append({"model": model, "caption": result})
         except Exception as e:
