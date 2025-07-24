@@ -11,6 +11,7 @@ import {
     DialogTitle,
     Grid,
     IconButton,
+    Link,
     List,
     ListItem,
     ListItemButton,
@@ -201,6 +202,25 @@ function App() {
         >
             <Typography variant="h5" component="h1" gutterBottom>
                 Porównaj modele do image captioningu z Hugging Face
+            </Typography>
+
+            <Typography variant="body1" sx={{ mb: 1 }}>
+                <Link
+                    href="https://huggingface.co/models?pipeline_tag=image-to-text&sort=trending"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Katalog modeli image-to-text
+                </Link>
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 2 }}>
+                <Link
+                    href="https://huggingface.co/models?pipeline_tag=image-text-to-text&sort=trending"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Katalog modeli image-text-to-text
+                </Link>
             </Typography>
 
             <Button
