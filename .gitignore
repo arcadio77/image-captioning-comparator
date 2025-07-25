@@ -6,3 +6,6 @@
 */__pycache__
 worker/hf_cache/*
 !worker/hf_cache/.gitkeep
+worker/custom_infer/*
+!worker/custom_infer/__init__.py
+!worker/custom_infer/base.py

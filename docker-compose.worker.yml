@@ -6,9 +6,9 @@ services:
       context: worker
       dockerfile: Dockerfile
     volumes:
-      - ./worker:/app/worker
+      - ./worker:/app
     environment:
-      - HF_HOME=/app/worker/hf_cache
+      - HF_HOME=/app/hf_cache
     env_file:
       - worker/.env
     restart: on-failure
