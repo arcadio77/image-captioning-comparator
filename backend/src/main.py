@@ -54,7 +54,7 @@ async def worker_status_listener():
                 available_models = data.get("available_models", [])
                 loaded_models = data.get("loaded_models", [])
                 status = data.get("status", "offline")
-                logger.debug(f"Worker status update: {worker_id}, Status: {status}, Available Models: {available_models}, Loaded Models: {loaded_models}")
+               
                 if not worker_id:
                     continue
 

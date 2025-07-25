@@ -164,7 +164,7 @@ class Worker:
     async def send_status(self, status="online", additional_info={}):
         channel = await self.connection.channel()
         exchange = await channel.declare_exchange("worker_status_exchange", aio_pika.ExchangeType.FANOUT)
-        self.logger.debug(f"Sending status: {status} for worker {self.worker_id}")
+
         message = {
             "worker_id": self.worker_id,
             "available_models": list(self.model_manager.cached_models),
