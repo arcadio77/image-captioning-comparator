@@ -1,6 +1,6 @@
-from fastapi import APIRouter, UploadFile, HTTPException
+from fastapi import APIRouter, UploadFile, HTTPException, Form, File
 from typing import List
-import base64, json, asyncio
+import base64, json, asyncio, os
 from models import workers, server_models, response_futures, download_futures
 from utils import is_valid_model
 from rabbitmq import rabbitmq
@@ -120,3 +120,42 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
         merged_results.append(combined)
 
     return {"results": merged_results}
+
+@router.post("/upload_custom_model")
+async def upload_model_file(worker: str = Form(...), model: str = Form(...), code_file: UploadFile = File(...)):
+    if not is_valid_model(model):
+        raise HTTPException(status_code=400, detail="Model not found or not an image-to-text model.")
+    if worker not in workers:
+        raise HTTPException(status_code=404, detail="Worker not found.")
+    if model in workers[worker]["cached_models"]:
+        raise HTTPException(status_code=400, detail="Model already cached on worker.")
+    
+    try:
+        code_bytes = await code_file.read()
+        code = code_bytes.decode("utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read code file: {str(e)}")
+    
+    key = f"{worker}_{model}"
+    loop = asyncio.get_event_loop()
+    fut = loop.create_future()
+    download_futures[key] = fut
+
+    await rabbitmq.publish_message(
+        'worker_control',
+        worker,
+        {
+            "action": "custom",
+            "model": model,
+            "code": code,
+        }
+    )
+
+    try:
+        await asyncio.wait_for(fut, timeout=None)
+    except Exception as e:
+        del download_futures[key]
+        raise HTTPException(status_code=500, detail=f"Custom model error: {str(e)}")
+
+    del download_futures[key]
+    return {"status": "Custom model downloaded."}

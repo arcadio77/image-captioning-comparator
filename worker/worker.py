@@ -44,7 +44,7 @@ class Worker:
     
     async def start(self):
         self.logger.info(f"Starting worker {self.worker_id}")
-        await self.model_manager.scan_cache()
+        self.model_manager.scan_cache()
         self.connection = await aio_pika.connect_robust(self.rabbitmq_url)
         self.channel = await self.connection.channel()
         await self.channel.set_qos(prefetch_count=1)
@@ -88,38 +88,45 @@ class Worker:
                 self.logger.error(f"Invalid image data for file ID {file_id}.")
                 return
 
-            pipe = await self.model_manager.get_pipeline(model)
+            pipe = self.run_in_executor(self.model_manager.get_pipeline(model))
             results = []
 
             try:
                 self.logger.debug(f"Processing image with model {model} for file ID {file_id}.")
-                tags = repo_info(model).tags
-                if "image-text-to-text" in tags:
-                    inputs = [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "image", "image": image},
-                                {"type": "text", "text": "Generate a caption for the image."}
-                            ]
-                        }
-                    ]
-                    output = await self.run_in_executor(pipe, text=inputs)
-                    result = ""
-                    for item in output:
-                        for data in item.get('generated_text', []):
-                            if data.get('role') == 'assistant':
-                                result = data.get('content')
-                                break
-                    result = result if result else "No caption generated."
+                if self.model_manager.is_custom_model(model):
+                    self.logger.debug(f"Running custom inference for model {model}. {type(pipe)}")
+                    result = await self.run_in_executor(pipe.infer, image)
+                    results.append({"model": model, "caption": result})
                 else:
-                    output = await self.run_in_executor(pipe, image)
-                    result = output[0]["generated_text"]
-                results.append({"model": model, "caption": result})
+                    tags = repo_info(model).tags
+                    if "image-text-to-text" in tags:
+                        self.logger.debug(f"Using image-text-to-text pipeline for model {model}.")
+                        inputs = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image", "image": image},
+                                    {"type": "text", "text": "Generate a caption for the image."}
+                                ]
+                            }
+                        ]
+                        output = await self.run_in_executor(pipe, text=inputs)
+                        result = ""
+                        for item in output:
+                            for data in item.get('generated_text', []):
+                                if data.get('role') == 'assistant':
+                                    result = data.get('content')
+                                    break
+                        result = result if result else "No caption generated."
+                    else:
+                        self.logger.debug(f"Using image-to-text pipeline for model {model}.")
+                        output = await self.run_in_executor(pipe, image)
+                        result = output[0]["generated_text"]
+                    results.append({"model": model, "caption": result})
             except Exception as e:
                 self.logger.error(f"Error processing image with model {model}: {e}")
                 results.append({"model": model, "error": str(e)})
-            
+                
             self.logger.debug(f"Results for file ID {file_id}: {results}")
             
             if message.reply_to:
@@ -135,6 +142,7 @@ class Worker:
                     ),
                     routing_key=message.reply_to
                 )
+
     async def control_receiver(self):
         channel = await self.connection.channel()
         queue_name = f"worker_{self.worker_id}"
@@ -148,18 +156,27 @@ class Worker:
                     action = msg.get("action")
                     model = msg.get("model")
 
+                    self.logger.info(f"Received control message for action '{action}' on model '{model}'.")
+
                     if action == "download":
                         try:
-                            await self.model_manager.download_model(model)
+                            await self.run_in_executor(self.model_manager.download_model, model)
                             await self.consume_model(model)
                             await self.send_status(status="downloaded", additional_info={"model": model})
                         except Exception as e:
                             await self.send_status(status="downloaded", additional_info={"model": model, "error": str(e)})
                     elif action == "unload":
-                        await self.model_manager.unload_model(model)
+                        self.model_manager.unload_model(model)
                     elif action == "delete":
-                        await self.model_manager.delete_model(model)
+                        self.model_manager.delete_model(model)
                         self.cached_consumers.discard(model)
+                    elif action == "custom":
+                        try:
+                            await self.run_in_executor(self.model_manager.create_custom_model, model, msg.get("code"))
+                            await self.consume_model(model)
+                            await self.send_status(status="custom", additional_info={"model": model})
+                        except Exception as e:
+                            await self.send_status(status="custom", additional_info={"model": model, "error": str(e)})
 
     async def send_status(self, status="online", additional_info={}):
         channel = await self.connection.channel()
@@ -201,7 +218,7 @@ class Worker:
     async def run_in_executor(self, func, *args, **kwargs):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, functools.partial(func, *args, **kwargs))
-        
+    
 if __name__ == "__main__":
     worker = Worker()
     asyncio.run(worker.start())

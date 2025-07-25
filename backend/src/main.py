@@ -57,7 +57,7 @@ async def worker_status_listener():
                
                 if not worker_id:
                     continue
-
+                logger.info(f"Worker {worker_id} status: {status}")
                 async with worker_lock:
                     if status == "online":
                         if worker_id not in workers:
@@ -66,7 +66,7 @@ async def worker_status_listener():
                         workers[worker_id]["cached_models"] = set(available_models)
                         workers[worker_id]["loaded_models"] = set(loaded_models)
                         workers[worker_id]["last_seen"] = time.time()
-                    elif status == "downloaded":
+                    elif status == "downloaded" or status == "custom":
                         key = f"{worker_id}_{data.get('model', '')}"
                         fut = download_futures.get(key)
                         if fut and not fut.done():
