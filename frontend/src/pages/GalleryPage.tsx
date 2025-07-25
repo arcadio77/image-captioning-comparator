@@ -178,7 +178,6 @@ function GalleryPage() {
                                     width: '100%',
                                     objectFit: 'cover',
                                     display: 'block',
-                                    borderBottom: '1px solid #eee'
                                 }}
                             />
                             <CardContent sx={{ flexGrow: 1 }}>

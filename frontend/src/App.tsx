@@ -18,6 +18,8 @@ import {
     ListItemText,
     TextField,
     Typography,
+    Paper,
+    Divider,
 } from '@mui/material';
 import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -67,10 +69,6 @@ function App() {
         setFetchedModels([]);
         setModelFilterText('');
         setFetchedModelFilterText('');
-    };
-
-    const handleDeleteText = (modelToDelete: string) => {
-        removeModel(modelToDelete);
     };
 
     const handleImagesChange = (files: File[] | File | null) => {
@@ -200,66 +198,102 @@ function App() {
                 p: 2,
             }}
         >
-            <Typography variant="h5" component="h1" gutterBottom>
-                Porównaj modele do image captioningu z Hugging Face
+            <Typography
+                variant="h4"
+                component="h1"
+                gutterBottom
+                align="center"
+                sx={{
+                    fontWeight: 'bold',
+                    color: theme.palette.primary.main,
+                    mb: 3,
+                }}
+            >
+                Porównywarka Modeli Image Captioning
+            </Typography>
+            <Typography variant="h6" component="h2" align="center" color="text.secondary" sx={{ mb: 4 }}>
+                Odkryj możliwości opisywania zdjęć z wykorzystaniem modeli Hugging Face
             </Typography>
 
-            <Typography variant="body1" sx={{ mb: 1 }}>
+            <Box sx={{ mb: 4, display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
                 <Link
                     href="https://huggingface.co/models?pipeline_tag=image-to-text&sort=trending"
                     target="_blank"
                     rel="noopener noreferrer"
+                    sx={{
+                        color: theme.palette.info.main,
+                        textDecoration: 'none',
+                        '&:hover': {
+                            textDecoration: 'underline',
+                        },
+                        fontWeight: 'medium',
+                    }}
                 >
                     Katalog modeli image-to-text
                 </Link>
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 2 }}>
                 <Link
                     href="https://huggingface.co/models?pipeline_tag=image-text-to-text&sort=trending"
                     target="_blank"
                     rel="noopener noreferrer"
+                    sx={{
+                        color: theme.palette.info.main,
+                        textDecoration: 'none',
+                        '&:hover': {
+                            textDecoration: 'underline',
+                        },
+                        fontWeight: 'medium',
+                    }}
                 >
                     Katalog modeli image-text-to-text
                 </Link>
-            </Typography>
+            </Box>
 
-            <Button
-                variant="outlined"
-                onClick={() => navigate('/workers')}
-                sx={{ mb: 0 }}
-                disabled={loading || fetchingModels}
-            >
-                Zarządzaj workerami
-            </Button>
+            <Divider sx={{ width: '80%', mb: 4 }} />
 
-            <Button
-                variant="outlined"
-                color="primary"
-                sx={{ mt: 2, mb: 2 }}
-                onClick={handleFetchModels}
-                disabled={loading || fetchingModels}
-            >
-                {fetchingModels ? <MuiCircularProgress size={24} /> : "Dodaj modele"}
-            </Button>
-
-            <Box
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mb: 4, width: '100%', justifyContent: 'center' }}>
+                <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleFetchModels}
+                    disabled={loading || fetchingModels}
+                    sx={{
+                        minWidth: { xs: '100%', sm: 'auto' },
+                        px: 4, py: 1.5,
+                        fontWeight: 'bold',
+                        boxShadow: theme.shadows[3],
+                        '&:hover': { boxShadow: theme.shadows[6] },
+                    }}
+                >
+                    {fetchingModels ? <MuiCircularProgress size={24} sx={{ color: 'white' }} /> : "Dodaj modele"}
+                </Button>
+                <Button
+                    variant="outlined"
+                    onClick={() => navigate('/workers')}
+                    disabled={loading || fetchingModels}
+                    sx={{
+                        minWidth: { xs: '100%', sm: 'auto' },
+                        px: 4, py: 1.5,
+                    }}
+                >
+                    Zarządzaj workerami
+                </Button>
+            </Box>
+            <Paper
+                elevation={3}
                 sx={{
                     width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
-                    border: `1px solid ${theme.palette.divider}`,
-                    borderRadius: '4px',
-                    p: 2,
-                    mb: 3,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
+                    p: 3,
+                    mb: 4,
+                    borderRadius: '8px',
+                    boxShadow: theme.shadows[5],
                 }}
             >
-                <Typography variant="h6" component="h2" gutterBottom sx={{ textAlign: 'center' }}>
-                    Dodane modele:
+                <Typography variant="h6" component="h2" gutterBottom align="center" sx={{ mb: 2 }}>
+                    Dodane modele do porównania:
                 </Typography>
                 {models.length > 0 && (
                     <TextField
-                        label="Filtruj modele"
+                        label="Filtruj dodane modele"
                         variant="outlined"
                         fullWidth
                         value={modelFilterText}
@@ -271,93 +305,119 @@ function App() {
                 )}
 
                 {filteredAndSortedModels.length === 0 ? (
-                    <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
-                        {models.length === 0 ? "Brak modeli" : "Brak modeli pasujących do filtra"}
+                    <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
+                        {models.length === 0 ? "Brak dodanych modeli." : "Brak modeli pasujących do filtra."}
                     </Typography>
                 ) : (
-                    <List sx={{ width: '100%' }}>
+                    <List>
                         {filteredAndSortedModels.map((modelName) => (
                             <ListItem
                                 key={modelName}
                                 secondaryAction={
-                                    <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteText(modelName)} disabled={loading}>
-                                        <DeleteIcon />
+                                    <IconButton edge="end" aria-label="delete" onClick={() => removeModel(modelName)} disabled={loading}>
+                                        <DeleteIcon/>
                                     </IconButton>
                                 }
+                                sx={{ borderBottom: `1px solid ${theme.palette.divider}` }}
                             >
                                 <ListItemText primary={modelName} />
                             </ListItem>
                         ))}
                     </List>
                 )}
-            </Box>
-            <FileUploader
-                accept="image/*"
-                multiple
-                onFileChange={handleImagesChange}
-                label="Prześlij zdjęcia"
-                loading={loading}
-            />
-            {imageUrls.length > 0 && (
-                <Box mt={2} sx={{ width: '100%', textAlign: 'center' }}>
-                    <Typography variant="body2" gutterBottom color="text.secondary">
-                        Wybrane zdjęcia:
-                    </Typography>
-                    <Grid container spacing={1} justifyContent="center">
-                        {imageUrls.map((img) => (
-                            <Grid item key={img.name + img.size} {...({ component: "div" } as any)}>
-                                <Chip
-                                    label={img.name}
-                                    size="small"
-                                    onDelete={() => removeImage(
-                                        images.find(
-                                            originalImg => originalImg.file.name === img.name && originalImg.file.size === img.size
-                                        )?.file || new File([], '')
-                                    )}
-                                    disabled={loading}
-                                    avatar={
-                                        <img
-                                            src={img.url}
-                                            alt={img.name}
-                                            style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', padding:4 }}
-                                        />
-                                    }
-                                    sx={{ height: 'auto', '& .MuiChip-label': { py: 0.5 }, '& .MuiChip-avatar': { width: 28, height: 28 } }}
-                                />
-                            </Grid>
-                        ))}
-                    </Grid>
-                </Box>
-            )}
-            {loading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                    <MuiCircularProgress />
-                </Box>
-            ) : (
+            </Paper>
+            <Paper
+                elevation={3}
+                sx={{
+                    width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
+                    p: 3,
+                    mb: 4,
+                    borderRadius: '8px',
+                    boxShadow: theme.shadows[5],
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                }}
+            >
+                <FileUploader
+                    accept="image/*"
+                    multiple
+                    onFileChange={handleImagesChange}
+                    label="Prześlij zdjęcia"
+                    loading={loading}
+                />
+                {imageUrls.length > 0 && (
+                    <Box mt={3} sx={{ width: '100%', textAlign: 'center' }}>
+                        <Typography variant="subtitle1" gutterBottom color="text.secondary" sx={{ mb: 2 }}>
+                            Wybrane zdjęcia ({imageUrls.length}):
+                        </Typography>
+                        <Grid container spacing={1} justifyContent="center">
+                            {imageUrls.map((img) => (
+                                <Grid item key={img.name + img.size} sx={{ display: 'flex' }} {...({ component: "div" } as any)}>
+                                    <Chip
+                                        label={img.name.length > 20 ? img.name.substring(0, 17) + '...' : img.name}
+                                        size="medium"
+                                        onDelete={() => removeImage(
+                                            images.find(
+                                                originalImg => originalImg.file.name === img.name && originalImg.file.size === img.size
+                                            )?.file || new File([], '')
+                                        )}
+                                        disabled={loading}
+                                        avatar={
+                                            <img
+                                                src={img.url}
+                                                alt={img.name}
+                                                style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }}
+                                            />
+                                        }
+                                        sx={{
+                                            height: 'auto',
+                                            py: 0.8,
+                                            borderRadius: '20px',
+                                            bgcolor: theme.palette.action.selected,
+                                            '& .MuiChip-label': { px: 1 },
+                                            '& .MuiChip-avatar': { width: 32, height: 32, mx: '4px!important' }
+                                        }}
+                                    />
+                                </Grid>
+                            ))}
+                        </Grid>
+                    </Box>
+                )}
+            </Paper>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 3, mb: 4, width: '100%', justifyContent: 'center' }}>
+                <Button
+                    variant="contained"
+                    color="success"
+                    sx={{
+                        minWidth: { xs: '100%', sm: 'auto' },
+                        px: 5, py: 1.5,
+                        fontWeight: 'bold',
+                        boxShadow: theme.shadows[3],
+                        '&:hover': { boxShadow: theme.shadows[6] },
+                    }}
+                    onClick={handleSend}
+                    disabled={loading || images.length === 0 || models.length === 0}
+                >
+                    {loading ? <MuiCircularProgress size={24} sx={{ color: 'white' }} /> : "Wyślij i Przejdź do Galerii"}
+                </Button>
                 <Button
                     variant="outlined"
-                    sx={{ mt: 2 }}
-                    onClick={handleSend}
+                    color="error"
+                    sx={{
+                        minWidth: { xs: '100%', sm: 'auto' },
+                        px: 4, py: 1.5,
+                        '&:hover': {
+                            backgroundColor: (theme) => theme.palette.error.light + '1A',
+                            borderColor: (theme) => theme.palette.error.dark,
+                        },
+                    }}
+                    onClick={reset}
                     disabled={loading}
                 >
-                    Wyślij i Przejdź do Galerii
+                    Wyczyść Wszystkie Dane
                 </Button>
-            )}
-            <Button
-                variant="outlined"
-                color="error"
-                sx={{
-                    mt: 2,
-                    '&:hover': {
-                        backgroundColor: (theme) => theme.palette.error.light + '1A',
-                        borderColor: (theme) => theme.palette.error.dark,
-                    },
-                }}
-                onClick={reset}
-                disabled={loading}
-            >
-                Wyczyść Wszystkie Dane (zdjęcia i modele)
-            </Button>
+            </Box>
             <Dialog
                 open={openAlertDialog}
                 onClose={handleCloseAlertDialog}
@@ -386,7 +446,7 @@ function App() {
                 <DialogTitle id="models-dialog-title">Wybierz modele do dodania</DialogTitle>
                 <DialogContent dividers>
                     <TextField
-                        label="Filtruj pobrane modele"
+                        label="Filtruj dostępne modele"
                         variant="outlined"
                         fullWidth
                         value={fetchedModelFilterText}
@@ -400,24 +460,28 @@ function App() {
                             <MuiCircularProgress />
                         </Box>
                     ) : filteredFetchedModels.length === 0 ? (
-                        <Typography color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                            Brak dostępnych modeli.
+                        <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
+                            Brak dostępnych modeli pasujących do filtra.
                         </Typography>
                     ) : (
-                        <List>
+                        <List sx={{ maxHeight: 400, overflow: 'auto', border: `1px solid ${theme.palette.divider}`, borderRadius: '4px' }}>
                             {filteredFetchedModels.map((modelName) => (
                                 <ListItem
                                     key={modelName}
                                     disablePadding
                                     secondaryAction={
-                                        <IconButton
-                                            edge="end"
-                                            aria-label="add"
-                                            onClick={() => addModel(modelName)}
-                                            disabled={models.includes(modelName) || loading}
-                                        >
-                                            {models.includes(modelName) ? "Dodano" : "Dodaj"}
-                                        </IconButton>
+                                        models.includes(modelName) ? (
+                                            <Chip label="Dodano" color="success" size="small" />
+                                        ) : (
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={() => addModel(modelName)}
+                                                disabled={loading}
+                                            >
+                                                Dodaj
+                                            </Button>
+                                        )
                                     }
                                 >
                                     <ListItemButton
@@ -432,8 +496,8 @@ function App() {
                     )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleAddAllModelsFromFetched} disabled={filteredFetchedModels.length === 0 || loading}>
-                        Dodaj wszystkie modele
+                    <Button onClick={handleAddAllModelsFromFetched} disabled={filteredFetchedModels.length === 0 || loading || fetchedModels.every(model => models.includes(model))}>
+                        Dodaj wszystkie widoczne modele
                     </Button>
                     <Button onClick={handleCloseModelsDialog}>
                         Zamknij
