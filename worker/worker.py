@@ -1,9 +1,10 @@
-import uuid, os, logging, aio_pika, asyncio, json, io, base64, sys
+import uuid, os, logging, aio_pika, asyncio, json, io, base64, sys, functools
 from dotenv import load_dotenv
 from model_manager import ModelManager
 from loguru import logger
 from huggingface_hub import repo_info
 from PIL import Image
+from concurrent.futures import ThreadPoolExecutor
 
 class Worker:
     def __init__(self):
@@ -13,6 +14,7 @@ class Worker:
         self.rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
         self.model_manager = ModelManager(self.logger)
         self.cached_consumers = set()
+        self.executor = ThreadPoolExecutor()
     
     def setup_logger(self):
         logger.remove()
@@ -102,7 +104,7 @@ class Worker:
                             ]
                         }
                     ]
-                    output = pipe(text=inputs)
+                    output = await self.run_in_executor(pipe, text=inputs)
                     result = ""
                     for item in output:
                         for data in item.get('generated_text', []):
@@ -111,7 +113,8 @@ class Worker:
                                 break
                     result = result if result else "No caption generated."
                 else:
-                    result = pipe(image)[0]["generated_text"]
+                    output = await self.run_in_executor(pipe, image)
+                    result = output[0]["generated_text"]
                 results.append({"model": model, "caption": result})
             except Exception as e:
                 self.logger.error(f"Error processing image with model {model}: {e}")
@@ -161,7 +164,7 @@ class Worker:
     async def send_status(self, status="online", additional_info={}):
         channel = await self.connection.channel()
         exchange = await channel.declare_exchange("worker_status_exchange", aio_pika.ExchangeType.FANOUT)
-
+        self.logger.debug(f"Sending status: {status} for worker {self.worker_id}")
         message = {
             "worker_id": self.worker_id,
             "available_models": list(self.model_manager.cached_models),
@@ -194,6 +197,10 @@ class Worker:
         except Exception as e:
             self.logger.error(f"Failed to decode image: {e}")
             return None
+        
+    async def run_in_executor(self, func, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, functools.partial(func, *args, **kwargs))
         
 if __name__ == "__main__":
     worker = Worker()
