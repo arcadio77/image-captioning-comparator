@@ -106,7 +106,7 @@ class ModelManager:
         filename = model_name.replace("/", "__") + ".py"
         module_path = os.path.join("custom_infer", filename)
 
-        if not os.path.isfile(module_path):
+        if not os.path.exists(module_path) or not os.path.isfile(module_path):
             self.logger.info(f"Current working directory: {os.getcwd()}")
             self.logger.warning(f"Custom infer file not found: {module_path}")
             return None

@@ -88,7 +88,7 @@ class Worker:
                 self.logger.error(f"Invalid image data for file ID {file_id}.")
                 return
 
-            pipe = self.run_in_executor(self.model_manager.get_pipeline(model))
+            pipe = await self.run_in_executor(self.model_manager.get_pipeline, model)
             results = []
 
             try:
