@@ -15,6 +15,7 @@ class Worker:
         self.model_manager = ModelManager(self.logger)
         self.cached_consumers = set()
         self.executor = ThreadPoolExecutor()
+        self.task_lock = asyncio.Lock()
     
     def setup_logger(self):
         logger.remove()
@@ -79,69 +80,70 @@ class Worker:
         self.logger.info(f"Consumer for model {model} started.")
 
     async def on_message(self, message: aio_pika.IncomingMessage, model):
-        async with message.process():
-            msg = json.loads(message.body)
-            file_id = msg.get("id")
-            image = self.decode_image(msg.get("image"))
+        async with self.task_lock:
+            async with message.process():
+                msg = json.loads(message.body)
+                file_id = msg.get("id")
+                image = self.decode_image(msg.get("image"))
 
-            if not image:
-                self.logger.error(f"Invalid image data for file ID {file_id}.")
-                return
+                if not image:
+                    self.logger.error(f"Invalid image data for file ID {file_id}.")
+                    return
 
-            pipe = await self.run_in_executor(self.model_manager.get_pipeline, model)
-            results = []
+                pipe = await self.run_in_executor(self.model_manager.get_pipeline, model)
+                results = []
 
-            try:
-                self.logger.debug(f"Processing image with model {model} for file ID {file_id}.")
-                if self.model_manager.is_custom_model(model):
-                    self.logger.debug(f"Running custom inference for model {model}. {type(pipe)}")
-                    result = await self.run_in_executor(pipe.infer, image)
-                    results.append({"model": model, "caption": result})
-                else:
-                    tags = repo_info(model).tags
-                    if "image-text-to-text" in tags:
-                        self.logger.debug(f"Using image-text-to-text pipeline for model {model}.")
-                        inputs = [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "image", "image": image},
-                                    {"type": "text", "text": "Generate a caption for the image."}
-                                ]
-                            }
-                        ]
-                        output = await self.run_in_executor(pipe, text=inputs)
-                        result = ""
-                        for item in output:
-                            for data in item.get('generated_text', []):
-                                if data.get('role') == 'assistant':
-                                    result = data.get('content')
-                                    break
-                        result = result if result else "No caption generated."
+                try:
+                    self.logger.debug(f"Processing image with model {model} for file ID {file_id}.")
+                    if self.model_manager.is_custom_model(model):
+                        self.logger.debug(f"Running custom inference for model {model}. {type(pipe)}")
+                        result = await self.run_in_executor(pipe.infer, image)
+                        results.append({"model": model, "caption": result})
                     else:
-                        self.logger.debug(f"Using image-to-text pipeline for model {model}.")
-                        output = await self.run_in_executor(pipe, image)
-                        result = output[0]["generated_text"]
-                    results.append({"model": model, "caption": result})
-            except Exception as e:
-                self.logger.error(f"Error processing image with model {model}: {e}")
-                results.append({"model": model, "error": str(e)})
+                        tags = repo_info(model).tags
+                        if "image-text-to-text" in tags:
+                            self.logger.debug(f"Using image-text-to-text pipeline for model {model}.")
+                            inputs = [
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "image", "image": image},
+                                        {"type": "text", "text": "Generate a caption for the image."}
+                                    ]
+                                }
+                            ]
+                            output = await self.run_in_executor(pipe, text=inputs)
+                            result = ""
+                            for item in output:
+                                for data in item.get('generated_text', []):
+                                    if data.get('role') == 'assistant':
+                                        result = data.get('content')
+                                        break
+                            result = result if result else "No caption generated."
+                        else:
+                            self.logger.debug(f"Using image-to-text pipeline for model {model}.")
+                            output = await self.run_in_executor(pipe, image)
+                            result = output[0]["generated_text"]
+                        results.append({"model": model, "caption": result})
+                except Exception as e:
+                    self.logger.error(f"Error processing image with model {model}: {e}")
+                    results.append({"model": model, "error": str(e)})
+                    
+                self.logger.debug(f"Results for file ID {file_id}: {results}")
                 
-            self.logger.debug(f"Results for file ID {file_id}: {results}")
-            
-            if message.reply_to:
-                response = json.dumps({
-                    "id": file_id,
-                    "results": results
-                })
+                if message.reply_to:
+                    response = json.dumps({
+                        "id": file_id,
+                        "results": results
+                    })
 
-                await self.channel.default_exchange.publish(
-                    aio_pika.Message(
-                        body=response.encode(),
-                        correlation_id=message.correlation_id
-                    ),
-                    routing_key=message.reply_to
-                )
+                    await self.channel.default_exchange.publish(
+                        aio_pika.Message(
+                            body=response.encode(),
+                            correlation_id=message.correlation_id
+                        ),
+                        routing_key=message.reply_to
+                    )
 
     async def control_receiver(self):
         channel = await self.connection.channel()
