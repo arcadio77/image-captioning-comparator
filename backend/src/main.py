@@ -3,8 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes import router
 from rabbitmq import rabbitmq
-from models import response_futures, workers, server_models, download_futures, connections, channels
-
+from models import response_futures, workers, server_models, download_futures
+from logger import logger
 from config import SERVER_QUEUE, WORKER_TIMEOUT
 
 app = FastAPI()
@@ -27,6 +27,7 @@ async def response_listener():
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
             async with message.process():
+                logger.debug(f"Received correlation ID: {message.correlation_id} with body: {message.body}")
                 correlation_id = message.correlation_id
                 if correlation_id in response_futures:
                     future = response_futures.pop(correlation_id)
@@ -53,6 +54,7 @@ async def worker_status_listener():
                 available_models = data.get("available_models", [])
                 loaded_models = data.get("loaded_models", [])
                 status = data.get("status", "offline")
+                logger.debug(f"Worker status update: {worker_id}, Status: {status}, Available Models: {available_models}, Loaded Models: {loaded_models}")
                 if not worker_id:
                     continue
 
@@ -81,12 +83,12 @@ async def worker_status_listener():
 async def heartbeat_listener():
     while True:
         await asyncio.sleep(10)
-        print("Checking worker heartbeats...")
+        
         async with worker_lock:
             current_time = time.time()
             for worker_id in list(workers.keys()):
                 if current_time - workers[worker_id].get("last_seen", 0) > WORKER_TIMEOUT:
-                    print(f"Worker {worker_id} timed out")
+                    logger.warning(f"Worker {worker_id} has timed out, removing from workers.")
                     del workers[worker_id]
             await update_server_models()
 
@@ -95,11 +97,15 @@ async def heartbeat_listener():
 async def startup_event():
     await rabbitmq.get_channel("publisher")
     asyncio.create_task(response_listener())
+    logger.info("Response listener started")
     asyncio.create_task(worker_status_listener())
+    logger.info("Worker status listener started")
     asyncio.create_task(heartbeat_listener())
+    logger.info("Heartbeat listener started")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     await rabbitmq.close()
+    logger.info("RabbitMQ connection closed")
     response_futures.clear()
     download_futures.clear()
