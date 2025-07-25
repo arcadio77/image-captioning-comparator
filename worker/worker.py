@@ -1,6 +1,6 @@
 import uuid, os, logging, aio_pika, asyncio, json, io, base64, sys
 from dotenv import load_dotenv
-from ModelManager import ModelManager
+from model_manager import ModelManager
 from loguru import logger
 from huggingface_hub import repo_info
 from PIL import Image

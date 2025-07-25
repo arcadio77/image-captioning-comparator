@@ -1,9 +1,9 @@
+import asyncio, aio_pika, json, time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes import router
-from rabbitmq import setup_connection
+from rabbitmq import rabbitmq
 from models import response_futures, workers, server_models, download_futures, connections, channels
-import threading, json, time
 
 from config import SERVER_QUEUE, WORKER_TIMEOUT
 
@@ -18,114 +18,88 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-worker_lock = threading.Lock()
+worker_lock = asyncio.Lock()
 
-def response_listener():
-    def callback(channel, method, properties, body):
-        correlation_id = properties.correlation_id
-        if correlation_id and correlation_id in response_futures:
-            future = response_futures.pop(correlation_id)
-            future.set_result(json.loads(body))
-        channel.basic_ack(delivery_tag=method.delivery_tag)
+async def response_listener():
+    channel = await rabbitmq.get_channel("response_listener")
+    queue = await channel.declare_queue(SERVER_QUEUE)
 
-    try:
-        connection, channel = setup_connection()
-        channel.queue_declare(queue=SERVER_QUEUE)
-        channel.basic_consume(queue=SERVER_QUEUE, on_message_callback=callback)
+    async with queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                correlation_id = message.correlation_id
+                if correlation_id in response_futures:
+                    future = response_futures.pop(correlation_id)
+                    future.set_result(json.loads(message.body))
 
-        channel.start_consuming()
-    except Exception as e:
-        if channel and channel.is_open:
-            channel.close()
-            connection.close()
-    
-def update_server_models():
+async def update_server_models():
     server_models.clear()
     all_models = set()
     for worker_info in workers.values():
         all_models.update(worker_info.get("cached_models", set()))
     server_models.update(all_models)
 
-def worker_status_listener():
-    def callback(channel, method, properties, body):
-        data = json.loads(body)
-        worker_id = data.get("worker_id")
-        available_models = data.get("available_models", [])
-        loaded_models = data.get("loaded_models", [])
-        status = data.get("status", "offline")
+async def worker_status_listener():
+    channel = await rabbitmq.get_channel("worker_status_listener")
+    queue = await channel.declare_queue(exclusive=True)
+    exchange = await channel.declare_exchange("worker_status_exchange", aio_pika.ExchangeType.FANOUT)
+    await queue.bind(exchange)
 
-        with worker_lock:
-            if worker_id and status == "online":
-                if worker_id not in workers:
-                    print(f"Worker {worker_id} is online")
-                    workers[worker_id] = {}
-                workers[worker_id]["cached_models"] = set(available_models)
-                workers[worker_id]["loaded_models"] = set(loaded_models)
-                workers[worker_id]["last_seen"] = time.time()
-            
-            elif worker_id and status == "downloaded":
-                key = f"{worker_id}_{data.get('model', '')}"
-                fut = download_futures.get(key)
-                if fut and not fut.done():
-                    if "error" in data:
-                        fut.set_exception(Exception(data["error"]))
-                    else:
-                        fut.set_result(True)
+    async with queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body)
+                worker_id = data.get("worker_id")
+                available_models = data.get("available_models", [])
+                loaded_models = data.get("loaded_models", [])
+                status = data.get("status", "offline")
+                if not worker_id:
+                    continue
 
+                async with worker_lock:
+                    if status == "online":
+                        if worker_id not in workers:
+                            print(f"Worker {worker_id} is online")
+                            workers[worker_id] = {}
+                        workers[worker_id]["cached_models"] = set(available_models)
+                        workers[worker_id]["loaded_models"] = set(loaded_models)
+                        workers[worker_id]["last_seen"] = time.time()
+                    elif status == "downloaded":
+                        key = f"{worker_id}_{data.get('model', '')}"
+                        fut = download_futures.get(key)
+                        if fut and not fut.done():
+                            if "error" in data:
+                                fut.set_exception(Exception(data["error"]))
+                            else:
+                                fut.set_result(True)
+                    elif status == "offline" and worker_id in workers:
+                        print(f"Worker {worker_id} is offline")
+                        del workers[worker_id]
+                    
+                    await update_server_models()
 
-            elif worker_id and status == "offline":
-                if worker_id in workers:
-                    print(f"Worker {worker_id} is offline")
-                    del workers[worker_id]
-            
-            update_server_models()
-        
-        channel.basic_ack(delivery_tag=method.delivery_tag)
-
-    connection, channel = setup_connection()
-    channel.exchange_declare(exchange='worker_status_exchange', exchange_type='fanout')
-    q = channel.queue_declare(queue='', exclusive=True)
-    channel.queue_bind(exchange='worker_status_exchange', queue=q.method.queue)
-    channel.basic_consume(queue=q.method.queue, on_message_callback=callback)
-
-    try:
-        channel.start_consuming()
-    except Exception as e:
-        if channel and channel.is_open:
-            channel.close()
-            connection.close()
-        print(f"Error in worker status listener: {e}")
-
-def heartbeat_watcher():
+async def heartbeat_listener():
     while True:
-        current_time = time.time()
-
-        with worker_lock:
-            for worker_id, worker_info in list(workers.items()):
-                if current_time - worker_info.get("last_seen", 0) > WORKER_TIMEOUT:
-                    print(f"Worker {worker_id} has timed out")
+        await asyncio.sleep(10)
+        print("Checking worker heartbeats...")
+        async with worker_lock:
+            current_time = time.time()
+            for worker_id in list(workers.keys()):
+                if current_time - workers[worker_id].get("last_seen", 0) > WORKER_TIMEOUT:
+                    print(f"Worker {worker_id} timed out")
                     del workers[worker_id]
-            
-            update_server_models()
+            await update_server_models()
 
-        time.sleep(10)
 
 @app.on_event("startup")
-def startup_event():
-    threading.Thread(target=response_listener, daemon=True).start()
-    threading.Thread(target=worker_status_listener, daemon=True).start()
-    threading.Thread(target=heartbeat_watcher, daemon=True).start()
+async def startup_event():
+    await rabbitmq.get_channel("publisher")
+    asyncio.create_task(response_listener())
+    asyncio.create_task(worker_status_listener())
+    asyncio.create_task(heartbeat_listener())
 
 @app.on_event("shutdown")
-def shutdown_event():
-    for connection in connections.values():
-        if connection and connection.is_open:
-            connection.close()
-
-    for channel in channels.values():
-        if channel and channel.is_open:
-            channel.close()
-
+async def shutdown_event():
+    await rabbitmq.close()
     response_futures.clear()
     download_futures.clear()
-    print("Server shutdown complete.")
