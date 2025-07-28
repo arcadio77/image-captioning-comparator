@@ -72,9 +72,9 @@ class Worker:
     async def consume_model(self, model):
         if model in self.cached_consumers:
             return
-        
+        exchange = await self.channel.declare_exchange("worker_tasks", aio_pika.ExchangeType.TOPIC)
         queue = await self.channel.declare_queue(model, durable=True)
-        await queue.bind("worker_tasks", routing_key=model)
+        await queue.bind(exchange, routing_key=model)
         await queue.consume(lambda msg: self.on_message(msg, model))
         self.cached_consumers.add(model)
         self.logger.info(f"Consumer for model {model} started.")
