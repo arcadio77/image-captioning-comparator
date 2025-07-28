@@ -1,5 +1,6 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
+    Alert,
     Box,
     Button,
     CircularProgress as MuiCircularProgress,
@@ -19,6 +20,7 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
+import { CloudUpload } from '@mui/icons-material';
 import {useTheme} from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {useNavigate} from 'react-router-dom';
@@ -38,6 +40,13 @@ function WorkersPage() {
     const [openAlertDialog, setOpenAlertDialog] = useState(false);
     const [alertDialogTitle, setAlertDialogTitle] = useState('');
     const [alertDialogMessage, setAlertDialogMessage] = useState('');
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const [openDownloadCustomModelDialog, setOpenDownloadCustomModelDialog] = useState(false);
+    const [customModelFile, setCustomModelFile] = useState<File | null>(null);
+    const [customModelFileName, setCustomModelFileName] = useState<string>('');
+    const [customModelDownloadLoading, setCustomModelDownloadLoading] = useState(false);
 
     const [deletingModel, setDeletingModel] = useState(false);
 
@@ -113,6 +122,31 @@ function WorkersPage() {
         setAlertDialogMessage('');
     };
 
+    const handleOpenDownloadCustomModelDialog = () => {
+        setCustomModelFile(null);
+        setCustomModelFileName('');
+        setOpenDownloadCustomModelDialog(true);
+    };
+
+    const handleCloseDownloadCustomModelDialog = () => {
+        setOpenDownloadCustomModelDialog(false);
+        setCustomModelFile(null);
+        setCustomModelFileName('');
+    };
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files ? event.target.files[0] : null;
+        if (file) {
+            if (file.name.endsWith('.py')) {
+                setCustomModelFile(file);
+                setCustomModelFileName(file.name);
+            } else {
+                setCustomModelFile(null);
+                setCustomModelFileName('');
+            }
+        }
+    };
+
     const handleDeleteModel = async (modelToDelete: string) => {
         if (!selectedWorkerId) {
             showAlertDialog("Błąd", "Wybierz workera, z którego chcesz usunąć model.");
@@ -183,12 +217,71 @@ function WorkersPage() {
         } catch (error) {
             console.error('Error downloading model:', error);
             if (axios.isAxiosError(error) && error.response) {
-                showAlertDialog("Błąd", `Nie udało się pobrać modelu: ${error.response.data.detail || error.message}`);
+                const errorMessage = error.response.data.detail;
+                if (typeof errorMessage === 'string' && errorMessage.startsWith("Error downloading model: Could not load model")) {
+                    handleOpenDownloadCustomModelDialog();
+                } else {
+                    showAlertDialog("Błąd", `Nie udało się pobrać modelu: ${error.response.data.detail}`);
+                }
             } else {
                 showAlertDialog("Błąd", `Nie udało się pobrać modelu: ${String(error)}`);
             }
         } finally {
             setWorkerDownloading(selectedWorkerId, false);
+            setWorkerDownloadingModelName(selectedWorkerId, '');
+        }
+    };
+
+    const handleDownloadCustomModel = async () => {
+        if (inputText.trim() === '') {
+            showAlertDialog("Błąd", "Podaj nazwę modelu do pobrania.");
+            return;
+        }
+        if (!selectedWorkerId) {
+            showAlertDialog("Błąd", "Wybierz workera, na którego chcesz pobrać model.");
+            return;
+        }
+        if (!customModelFile) {
+            showAlertDialog("Błąd", "Proszę wybrać plik .py z kodem modelu.");
+            return;
+        }
+
+        setCustomModelDownloadLoading(true);
+        setWorkerDownloading(selectedWorkerId, true);
+        const modelToDownload = inputText.trim();
+        setWorkerDownloadingModelName(selectedWorkerId, modelToDownload);
+
+
+        const formData = new FormData();
+        formData.append('worker', selectedWorkerId);
+        formData.append('model', modelToDownload);
+        formData.append('code_file', customModelFile);
+
+        try {
+            const response = await axios.post(`${VITE_BASE_URL}download_custom_model`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            if (response.status === 200) {
+                addModel(selectedWorkerId, modelToDownload);
+                handleCloseDownloadCustomModelDialog();
+                setInputText('');
+            } else {
+                showAlertDialog("Błąd", `Nieoczekiwany błąd podczas pobierania niestandardowego modelu: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('Error downloading custom model:', error);
+            if (axios.isAxiosError(error) && error.response) {
+                showAlertDialog("Błąd", `Nie udało się pobrać niestandardowego modelu: ${error.response.data.detail || error.message}`);
+            } else {
+                showAlertDialog("Błąd", `Nie udało się pobrać niestandardowego modelu: ${String(error)}`);
+            }
+        } finally {
+            setCustomModelDownloadLoading(false);
+            setWorkerDownloading(selectedWorkerId, false);
+            setWorkerDownloadingModelName(selectedWorkerId, '');
         }
     };
 
@@ -367,6 +460,68 @@ function WorkersPage() {
                 <DialogActions>
                     <Button onClick={handleCloseAlertDialog} autoFocus>
                         OK
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={openDownloadCustomModelDialog}
+                onClose={handleCloseDownloadCustomModelDialog}
+                aria-labelledby="custom-model-dialog-title"
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle id="custom-model-dialog-title">Pobierz Niestandardowy Model</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body1" sx={{ mb: 2 }}>
+                        Standardowe pobieranie modelu Hugging Face zakończyło się niepowodzeniem.
+                        Możesz spróbować pobrać model, dostarczając niestandardowy plik `.py`
+                        zawierający logikę ładowania modelu.
+                    </Typography>
+                    <TextField
+                        label="Nazwa modelu"
+                        variant="outlined"
+                        fullWidth
+                        value={inputText}
+                        disabled={true}
+                        sx={{ mb: 2 }}
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Button
+                            variant="outlined"
+                            component="label"
+                            startIcon={<CloudUpload />}
+                            disabled={customModelDownloadLoading}
+                        >
+                            Wybierz plik .py
+                            <input
+                                type="file"
+                                accept=".py"
+                                hidden
+                                onChange={handleFileChange}
+                                ref={fileInputRef}
+                            />
+                        </Button>
+                        <Typography variant="body2" color="text.secondary">
+                            {customModelFileName ? customModelFileName : "Brak wybranego pliku"}
+                        </Typography>
+                    </Box>
+                    {customModelFile && !customModelFileName.endsWith('.py') && (
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                            Wybrany plik nie ma rozszerzenia .py
+                        </Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseDownloadCustomModelDialog} disabled={customModelDownloadLoading}>
+                        Anuluj
+                    </Button>
+                    <Button
+                        onClick={handleDownloadCustomModel}
+                        variant="contained"
+                        color="primary"
+                        disabled={!customModelFile || customModelDownloadLoading || !customModelFileName.endsWith('.py')}
+                    >
+                        {customModelDownloadLoading ? <MuiCircularProgress size={24} sx={{ color: 'white' }} /> : "Pobierz niestandardowo"}
                     </Button>
                 </DialogActions>
             </Dialog>
