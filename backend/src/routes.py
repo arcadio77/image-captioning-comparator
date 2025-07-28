@@ -9,8 +9,9 @@ from config import SERVER_QUEUE
 
 router = APIRouter()
 
-@router.get("/workers")
+@router.get("/workers", summary="List all workers", response_description="List of workers with their cached and loaded models")
 async def get_workers():
+    """Returns a list of all active workers with their cached and loaded models."""
     return {
         "workers": [{
             "id": worker_id,
@@ -19,12 +20,22 @@ async def get_workers():
         } for worker_id, worker in workers.items()],
     }
 
-@router.get("/models")
+@router.get("/models", summary="List available models", response_description="List of available models on the server")
 async def get_models():
+    """
+    Returns a sorted list of all models available on the server.
+    """
     return {"models": sorted(list(server_models))}
 
-@router.delete("/delete_model")
+@router.delete("/delete_model", summary="Delete cached model from a worker")
 async def delete_model(worker:str, model: str):
+    """
+    Sends a command to a worker to delete a cached model.
+
+    - **worker**: ID of the worker
+    - **model**: Name of the model to delete
+    """
+
     if not is_valid_model(model):
         raise HTTPException(status_code=400, detail="Model not found or not an image-to-text model.")
     if worker not in workers:
@@ -45,8 +56,15 @@ async def delete_model(worker:str, model: str):
     return {"status": "Model deletion command sent to worker."}
 
 
-@router.post("/download_model") 
+@router.post("/download_model", summary="Download model to worker")
 async def download_model(worker: str, model: str):
+    """
+    Sends a command to download a model to the specified worker.
+
+    - **worker**: ID of the worker
+    - **model**: Name of the model to download
+    """
+     
     if not is_valid_model(model):
         raise HTTPException(status_code=400, detail="Model not found or not an image-to-text model.")
     if worker not in workers:
@@ -70,8 +88,14 @@ async def download_model(worker: str, model: str):
     del download_futures[key]
     return {"status": "Model downloaded."}
 
-@router.post("/unload_model")
+@router.post("/unload_model", summary="Unload loaded model from a worker")
 async def unload_model(worker: str, model: str):
+    """
+    Sends a command to unload a loaded model from the worker.
+
+    - **worker**: ID of the worker
+    - **model**: Name of the model to unload
+    """
     if worker not in workers:
         raise HTTPException(status_code=404, detail="Worker not found.")
     if model not in workers[worker]["loaded_models"]:
@@ -80,10 +104,21 @@ async def unload_model(worker: str, model: str):
     await rabbitmq.publish_message('worker_control', worker, {"action": "unload", "model": model})
     return {"status": "Model unload command sent to worker."}
 
-@router.post("/upload")
+@router.post("/upload", summary="Upload images for processing")
 async def upload_images(files: List[UploadFile], ids: List[str], models: List[str]):
+    """
+    Upload images to be processed by specific models.
+
+    - **files**: List of image files (jpeg, png, bmp, webp)
+    - **ids**: Comma-separated list of image identifiers (one per file)
+    - **models**: Comma-separated list of model names
+    """
     models = models[0].split(",")
     ids = ids[0].split(",")
+
+    for file in files:
+        if file.content_type not in ["image/jpeg", "image/png", "image/bmp", "image/webp"]:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
 
     valid_models = [model for model in models if model in server_models]
     loop = asyncio.get_event_loop()
@@ -121,8 +156,18 @@ async def upload_images(files: List[UploadFile], ids: List[str], models: List[st
 
     return {"results": merged_results}
 
-@router.post("/upload_custom_model")
-async def upload_model_file(worker: str = Form(...), model: str = Form(...), code_file: UploadFile = File(...)):
+@router.post("/download_custom_model", summary="Download and register a custom model")
+async def download_custom_model(worker: str = Form(...), model: str = Form(...), code_file: UploadFile = File(...)):
+    """
+    Uploads a Python source file to register a custom model on a specified worker.
+
+    The uploaded .py file should contain code that downloads, initializes,
+    and performs inference with a custom model from the Hugging Face Hub.
+
+    - **worker**: ID of the worker
+    - **model**: Name to assign to the custom model
+    - **code_file**: A .py file containing the Hugging Face model loading and inference logic.
+    """
     if not is_valid_model(model):
         raise HTTPException(status_code=400, detail="Model not found or not an image-to-text model.")
     if worker not in workers:

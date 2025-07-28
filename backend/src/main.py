@@ -7,7 +7,9 @@ from models import response_futures, workers, server_models, download_futures
 from logger import logger
 from config import SERVER_QUEUE, WORKER_TIMEOUT
 
-app = FastAPI()
+app = FastAPI(
+    title="Image Captioning Comparator",
+)
 app.include_router(router)
 
 app.add_middleware(
