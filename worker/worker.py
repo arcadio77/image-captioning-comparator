@@ -5,8 +5,21 @@ from loguru import logger
 from huggingface_hub import repo_info
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
+from typing import Union, Callable, Any
 
 class Worker:
+    """
+    Asynchronous worker that connects to RabbitMQ, listens for image captioning
+    tasks on queues for various models, processes images with models managed
+    by ModelManager, and sends results back.
+
+    Supports:
+    - Model cache scanning and management
+    - Concurrent task execution with asyncio and ThreadPoolExecutor
+    - Custom model inference
+    - Control messages for downloading/unloading/deleting models and custom code
+    - Periodic status reporting
+    """
     def __init__(self):
         load_dotenv()
         self.worker_id = uuid.uuid4().hex[:8]
@@ -18,6 +31,10 @@ class Worker:
         self.task_lock = asyncio.Lock()
     
     def setup_logger(self):
+        """
+        Configures Loguru logger and redirects stdlib logging through it,
+        enabling unified logging with proper formatting and async support.
+        """
         logger.remove()
         logger.add(sys.stderr, enqueue=True)
 
@@ -43,7 +60,17 @@ class Worker:
 
         return logger
     
-    async def start(self):
+    async def start(self) -> None:
+        """
+        Main async entry point of the worker:
+        - Logs startup
+        - Scans model cache
+        - Connects to RabbitMQ and opens a channel
+        - Sets QoS to 1 message per consumer
+        - Starts tasks for sending status and receiving control messages
+        - Binds consumers for cached models
+        - Waits indefinitely, cleaning up gracefully on cancellation
+        """
         self.logger.info(f"Starting worker {self.worker_id}")
         self.model_manager.scan_cache()
         self.connection = await aio_pika.connect_robust(self.rabbitmq_url)
@@ -65,11 +92,22 @@ class Worker:
             await asyncio.gather(self.status_task, self.control_task, return_exceptions=True)
             self.logger.info("Worker shutdown complete.")
 
-    async def bind_and_consume(self):
+    async def bind_and_consume(self) -> None:
+        """
+        Binds RabbitMQ consumers for each cached model.
+        Each consumer listens to a queue named by the model.
+        """
         for model in self.model_manager.cached_models:
             await self.consume_model(model)
 
-    async def consume_model(self, model):
+    async def consume_model(self, model: str) -> None:
+        """
+        Starts consuming messages for a specific model queue,
+        if not already consuming.
+
+        Args:
+            model (str): Model identifier
+        """
         if model in self.cached_consumers:
             return
         exchange = await self.channel.declare_exchange("worker_tasks", aio_pika.ExchangeType.TOPIC)
@@ -79,7 +117,21 @@ class Worker:
         self.cached_consumers.add(model)
         self.logger.info(f"Consumer for model {model} started.")
 
-    async def on_message(self, message: aio_pika.IncomingMessage, model):
+    async def on_message(self, message: aio_pika.IncomingMessage, model: str) -> None:
+        """
+        Processes a single incoming message containing an image for captioning.
+
+        Flow:
+        - Decode image from base64
+        - Get or load the model pipeline (custom or HF pipeline)
+        - Run inference asynchronously in thread pool
+        - Prepare result or error messages
+        - Send back the result
+
+        Args:
+            message (aio_pika.IncomingMessage): Incoming message from RabbitMQ
+            model (str): Model identifier to use for inference
+        """
         async with self.task_lock:
             async with message.process():
                 msg = json.loads(message.body)
@@ -145,7 +197,18 @@ class Worker:
                         routing_key=message.reply_to
                     )
 
-    async def control_receiver(self):
+    async def control_receiver(self) -> None:
+        """
+        Listens for control messages directed at this worker.
+
+        Supported actions:
+        - download: Download and load a model, then start consuming it
+        - unload: Unload a model
+        - delete: Delete model cache and stop consuming
+        - custom: Create/load a custom model from provided source code
+
+        Control messages are received on a unique exclusive queue named by worker ID.
+        """
         channel = await self.connection.channel()
         queue_name = f"worker_{self.worker_id}"
         queue = await channel.declare_queue(queue_name, exclusive=True)
@@ -180,7 +243,14 @@ class Worker:
                         except Exception as e:
                             await self.send_status(status="custom", additional_info={"model": model, "error": str(e)})
 
-    async def send_status(self, status="online", additional_info={}):
+    async def send_status(self, status: str = "online", additional_info: dict = {}) -> None:
+        """
+        Publishes the worker's current status and model lists on a fanout exchange.
+
+        Args:
+            status (str): Current status string
+            additional_info (dict): Extra fields to include in the status message
+        """
         channel = await self.connection.channel()
         exchange = await channel.declare_exchange("worker_status_exchange", aio_pika.ExchangeType.FANOUT)
 
@@ -202,7 +272,11 @@ class Worker:
         await channel.close()
 
     
-    async def status_sender(self):
+    async def status_sender(self) -> None:
+        """
+        Periodically sends the worker status every 10 seconds,
+        retrying on errors and logging them.
+        """
         while True:
             try:
                 await self.send_status()
@@ -210,14 +284,35 @@ class Worker:
                 self.logger.error(f"Error sending status: {e}")
             await asyncio.sleep(10)
 
-    def decode_image(self, b64):
+    def decode_image(self, b64: str) -> Union[Image.Image, None]:
+        """
+        Decodes a base64 string to a PIL RGB Image.
+
+        Args:
+            b64 (str): Base64 encoded image string.
+
+        Returns:
+            (Image.Image or None): Decoded PIL image or None if decoding fails.
+        """
         try:
             return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
         except Exception as e:
             self.logger.error(f"Failed to decode image: {e}")
             return None
         
-    async def run_in_executor(self, func, *args, **kwargs):
+    async def run_in_executor(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """
+        Runs a blocking function in the ThreadPoolExecutor to avoid blocking
+        the event loop.
+
+        Args:
+            func (callable): Function to run.
+            *args: Positional arguments.
+            **kwargs: Keyword arguments.
+
+        Returns:
+            Any: Result of the function call.
+        """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, functools.partial(func, *args, **kwargs))
     

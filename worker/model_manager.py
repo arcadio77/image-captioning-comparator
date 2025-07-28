@@ -4,15 +4,34 @@ from huggingface_hub.errors import CacheNotFound
 from loguru import logger
 from transformers import pipeline
 from custom_infer.base import CustomModel
+from typing import Union, Callable, Any, Optional
 
 class ModelManager:
+    """
+    Manages machine learning models from Hugging Face Hub including
+    caching, loading, downloading, unloading, deleting, and support for
+    custom inference implementations.
+    """
     def __init__(self, logger):
+        """
+        Initializes ModelManager instance.
+
+        Args:
+            logger: A logger instance for info, warning, and error messages.
+        """
         self.loaded_models = {}
         self.cached_models = set()
         self.custom_infer = {}
         self.logger = logger
 
-    def scan_cache(self):
+    def scan_cache(self) -> None:
+        """
+        Scans local Hugging Face cache directory for models that are
+        tagged as "image-to-text" or "image-text-to-text".
+
+        Populates self.cached_models with model IDs found in cache.
+        Logs warnings if cache is not found or errors occur.
+        """
         try:
             repos = scan_cache_dir().repos
         except CacheNotFound:
@@ -30,7 +49,23 @@ class ModelManager:
         
         self.logger.info(f"Cached models: {self.cached_models}")
 
-    def load_model(self, model_name):
+    def load_model(self, model_name: str) -> Union[CustomModel, Callable[..., Any]]:
+        """
+        Loads a model by name.
+
+        1. Tries to load a custom inference implementation if available.
+        2. Otherwise, loads a Hugging Face pipeline for "image-to-text"
+           or "image-text-to-text" tasks.
+        
+        Args:
+            model_name (str): Model identifier on Hugging Face Hub.
+        
+        Returns:
+            Loaded model instance or custom inference object.
+
+        Raises:
+            Exception if the model cannot be loaded or is unsupported.
+        """
         custom_infer = self.load_custom_infer(model_name)
         if custom_infer is not None:
             self.logger.info(f"Using custom inference for model {model_name}.")
@@ -54,7 +89,16 @@ class ModelManager:
             self.logger.error(f"Failed to load model {model_name}: {e}")
             raise e
 
-    def download_model(self, model_name):
+    def download_model(self, model_name: str) -> None:
+        """
+        Downloads a model from Hugging Face Hub if not cached, then loads it.
+
+        Args:
+            model_name (str): Model identifier.
+
+        Raises:
+            Exception if download or loading fails.
+        """
         if model_name in self.cached_models:
             self.logger.warning(f"Model {model_name} is already cached.")
             return
@@ -69,7 +113,13 @@ class ModelManager:
             self.delete_model(model_name)
             raise e
 
-    def unload_model(self, model_name):
+    def unload_model(self, model_name) -> None:
+        """
+        Unloads a loaded model to free resources.
+
+        Args:
+            model_name (str): Model identifier.
+        """
         if model_name in self.loaded_models:
             del self.loaded_models[model_name]
             torch.cuda.empty_cache()
@@ -77,7 +127,13 @@ class ModelManager:
         else:
             self.logger.warning(f"Model {model_name} is not loaded.")
 
-    def delete_model(self, model_name):
+    def delete_model(self, model_name: str) -> None:
+        """
+        Deletes cached model files and unloads the model.
+
+        Args:
+            model_name (str): Model identifier.
+        """
         self.unload_model(model_name)
         try:
             snapshot_path = snapshot_download(model_name, local_files_only=True)
@@ -97,12 +153,35 @@ class ModelManager:
         
         self.logger.info(f"Model {model_name} deleted successfully.")
 
-    def get_pipeline(self, model_name):
+    def get_pipeline(self, model_name: str) -> Union[CustomModel, Callable[..., Any], None]:
+        """
+        Returns the loaded model or pipeline instance.
+
+        If the model is cached but not loaded, attempts to load it.
+
+        Args:
+            model_name (str): Model identifier.
+
+        Returns:
+            Loaded model or pipeline instance, or None if not found.
+        """
         if (model_name not in self.loaded_models and model_name in self.cached_models):
             self.load_model(model_name)
         return self.loaded_models.get(model_name)
     
-    def load_custom_infer(self, model_name):
+    def load_custom_infer(self, model_name: str) -> Union[CustomModel, None]:
+        """
+        Loads a custom inference module for a model if available.
+
+        Looks for a Python file in 'custom_infer/' named after the model
+        (with '/' replaced by '__') and imports it.
+
+        Args:
+            model_name (str): Model identifier.
+
+        Returns:
+            Instance of a subclass of CustomModel if found and loaded, else None.
+        """
         filename = model_name.replace("/", "__") + ".py"
         module_path = os.path.join("custom_infer", filename)
 
@@ -133,7 +212,19 @@ class ModelManager:
 
         return None
     
-    def create_custom_model(self, model_name, code):
+    def create_custom_model(self, model_name: str, code: str):
+        """
+        Creates and loads a custom inference model from provided source code.
+
+        Writes the source code to a file in 'custom_infer/', then loads it.
+
+        Args:
+            model_name (str): Model identifier.
+            code (str): Python source code defining the custom model class.
+
+        Raises:
+            ValueError if creation or loading fails.
+        """
         if model_name in self.custom_infer:
             self.logger.warning(f"Custom model {model_name} already exists.")
             return
@@ -152,6 +243,15 @@ class ModelManager:
         self.loaded_models[model_name] = custom_model
         self.logger.info(f"Custom model {model_name} created successfully.")
         
-    def is_custom_model(self, model_name):
+    def is_custom_model(self, model_name: str) -> bool:
+        """
+        Checks if a model is a custom inference model.
+
+        Args:
+            model_name (str): Model identifier.
+
+        Returns:
+            bool: True if model is custom, False otherwise.
+        """
         return model_name in self.custom_infer
 
