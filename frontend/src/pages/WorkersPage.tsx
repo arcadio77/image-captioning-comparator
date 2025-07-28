@@ -264,9 +264,10 @@ function WorkersPage() {
                 },
             });
 
+            handleCloseDownloadCustomModelDialog()
+
             if (response.status === 200) {
                 addModel(selectedWorkerId, modelToDownload);
-                handleCloseDownloadCustomModelDialog();
                 setInputText('');
             } else {
                 showAlertDialog("Błąd", `Nieoczekiwany błąd podczas pobierania niestandardowego modelu: ${response.status}`);
@@ -279,7 +280,6 @@ function WorkersPage() {
                 showAlertDialog("Błąd", `Nie udało się pobrać niestandardowego modelu: ${String(error)}`);
             }
         } finally {
-            setCustomModelDownloadLoading(false);
             setWorkerDownloading(selectedWorkerId, false);
             setWorkerDownloadingModelName(selectedWorkerId, '');
         }
