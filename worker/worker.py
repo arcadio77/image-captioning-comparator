@@ -6,6 +6,26 @@ from huggingface_hub import repo_info
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union, Callable, Any
+from prometheus_client import Summary, Counter, Gauge, start_http_server
+
+# Prometheus metrics
+INFERENCE_TIME = Summary(
+    "inference_duration_seconds", 
+    "Time spent on inference",
+    ["model"]
+)
+
+PROCESSED_MESSAGES = Counter(
+    "processed_messages_total", 
+    "Total number of processed messages", 
+    ["model"]
+)
+
+PROCESSING_ERRORS = Counter(
+    "processing_errors_total",
+    "Total number of errors during message processing",
+    ["model"]
+)
 
 class Worker:
     """
@@ -149,7 +169,8 @@ class Worker:
                     self.logger.debug(f"Processing image with model {model} for file ID {file_id}.")
                     if self.model_manager.is_custom_model(model):
                         self.logger.debug(f"Running custom inference for model {model}. {type(pipe)}")
-                        result = await self.run_in_executor(pipe.infer, image)
+                        with INFERENCE_TIME.labels(model=model).time():
+                            result = await self.run_in_executor(pipe.infer, image)
                         results.append({"model": model, "caption": result})
                     else:
                         tags = repo_info(model).tags
@@ -164,7 +185,8 @@ class Worker:
                                     ]
                                 }
                             ]
-                            output = await self.run_in_executor(pipe, text=inputs)
+                            with INFERENCE_TIME.labels(model=model).time():
+                                output = await self.run_in_executor(pipe, text=inputs)
                             result = ""
                             for item in output:
                                 for data in item.get('generated_text', []):
@@ -174,12 +196,15 @@ class Worker:
                             result = result if result else "No caption generated."
                         else:
                             self.logger.debug(f"Using image-to-text pipeline for model {model}.")
-                            output = await self.run_in_executor(pipe, image)
+                            with INFERENCE_TIME.labels(model=model).time():
+                                output = await self.run_in_executor(pipe, image)
                             result = output[0]["generated_text"]
                         results.append({"model": model, "caption": result})
+                        PROCESSED_MESSAGES.labels(model=model).inc()
                 except Exception as e:
                     self.logger.error(f"Error processing image with model {model}: {e}")
                     results.append({"model": model, "error": str(e)})
+                    PROCESSING_ERRORS.labels(model=model).inc()
                     
                 self.logger.debug(f"Results for file ID {file_id}: {results}")
                 
@@ -317,5 +342,6 @@ class Worker:
         return await loop.run_in_executor(self.executor, functools.partial(func, *args, **kwargs))
     
 if __name__ == "__main__":
+    start_http_server(8001)
     worker = Worker()
     asyncio.run(worker.start())

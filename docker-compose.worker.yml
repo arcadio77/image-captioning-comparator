@@ -5,10 +5,20 @@ services:
     build:
       context: worker
       dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
     volumes:
       - ./worker:/app
     environment:
       - HF_HOME=/app/hf_cache
     env_file:
       - worker/.env
+    restart: on-failure
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     restart: on-failure
