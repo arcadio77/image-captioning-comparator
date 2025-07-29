@@ -115,8 +115,10 @@ class CustomModel(ABC):
 
 Each worker exposes Prometheus-compatible metrics on port 8001 at the `/metrics` endpoint. The following key metrics are available:
 
-* `inference_duration_seconds` — Inference duration per model
-* `processed_messages_total` — Total number of processed messages per model
-* `processing_errors_total` — Total number of processing errors per model
+* `inference_duration_seconds` - Inference duration per model
+* `processed_messages_total` - Total number of processed messages per model
+* `processing_errors_total` - Total number of processing errors per model
+* `worker_cpu_usage_percent` - CPU usage percent of the worker process 
+* `worker_ram_usage_percent` - RAM usage percent of the worker process
 
 These metrics can be collected by Prometheus and visualized with Grafana.

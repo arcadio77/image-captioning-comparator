@@ -1,4 +1,4 @@
-import uuid, os, logging, aio_pika, asyncio, json, io, base64, sys, functools
+import uuid, os, logging, aio_pika, asyncio, json, io, base64, sys, functools, psutil
 from dotenv import load_dotenv
 from model_manager import ModelManager
 from loguru import logger
@@ -25,6 +25,16 @@ PROCESSING_ERRORS = Counter(
     "processing_errors_total",
     "Total number of errors during message processing",
     ["model"]
+)
+
+CPU_USAGE = Gauge(
+    "worker_cpu_usage_percent",
+    "CPU usage percent of the worker process"
+)
+
+RAM_USAGE = Gauge(
+    "worker_ram_usage_percent",
+    "RAM usage percent of the worker process"
 )
 
 class Worker:
@@ -101,6 +111,9 @@ class Worker:
         self.control_task = asyncio.create_task(self.control_receiver())
         await self.bind_and_consume()
 
+        self.resource_task = asyncio.create_task(self.resource_monitor())
+
+
         try:
             await asyncio.Future()
         except asyncio.CancelledError:
@@ -109,7 +122,8 @@ class Worker:
             await self.connection.close()
             self.status_task.cancel()
             self.control_task.cancel()
-            await asyncio.gather(self.status_task, self.control_task, return_exceptions=True)
+            self.resource_task.cancel()
+            await asyncio.gather(self.status_task, self.control_task, self.resource_task, return_exceptions=True)
             self.logger.info("Worker shutdown complete.")
 
     async def bind_and_consume(self) -> None:
@@ -341,6 +355,20 @@ class Worker:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, functools.partial(func, *args, **kwargs))
     
+    async def resource_monitor(self) -> None:
+        """
+        Periodically collect CPU and RAM usage metrics.
+        """
+        process = psutil.Process(os.getpid())
+        while True:
+            try:
+                CPU_USAGE.set(process.cpu_percent(interval=None))
+                RAM_USAGE.set(process.memory_percent())
+            except Exception as e:
+                self.logger.error(f"Error collecting resource metrics: {e}")
+            await asyncio.sleep(5)
+
+        
 if __name__ == "__main__":
     start_http_server(8001)
     worker = Worker()
