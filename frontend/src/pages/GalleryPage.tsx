@@ -290,13 +290,10 @@ function GalleryPage() {
                                 image={image.previewUrl}
                                 alt={image.file.name}
                                 sx={{
-                                    height: 'auto',
-                                    maxHeight: 300,
+                                    height: '100%',
                                     width: '100%',
-                                    objectFit: 'contain',
-                                    display: 'block',
-                                    bgcolor: theme.palette.background.default,
-                                    p: 1,
+                                    objectFit: 'fill',
+                                    display: 'contain',
                                 }}
                             />
                             <CardContent sx={{ flexGrow: 1, p: 2 }}>
