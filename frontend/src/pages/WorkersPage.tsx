@@ -19,6 +19,10 @@ import {
     Select,
     TextField,
     Typography,
+    Paper,
+    Divider,
+    Tooltip,
+    Fab,
 } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 import {useTheme} from '@mui/material/styles';
@@ -27,6 +31,7 @@ import {useNavigate} from 'react-router-dom';
 import {VITE_BASE_URL} from '../utils/utils.ts';
 import axios from 'axios';
 import {useWorkersContext} from "../contexts/WorkersContext.tsx";
+import HomeIcon from "@mui/icons-material/Home";
 
 function WorkersPage() {
     const theme = useTheme();
@@ -285,6 +290,10 @@ function WorkersPage() {
         }
     };
 
+    const handleGoHome = () => {
+        navigate('/');
+    };
+
     const filteredAndSortedWorkerModels = useMemo(() => {
         const sorted = [...workerSpecificCachedModels].sort((a, b) => a.localeCompare(b));
         if (!modelFilterText) {
@@ -307,25 +316,36 @@ function WorkersPage() {
                 p: 2,
             }}
         >
-            <Typography variant="h5" component="h1" gutterBottom>
-                Zarządzanie pobranymi modelami na workerach
+            <Typography
+                variant="h4"
+                component="h1"
+                gutterBottom
+                align="center"
+                sx={{
+                    fontWeight: 'bold',
+                    color: theme.palette.primary.main,
+                    mb: 2,
+                }}
+            >
+                Zarządzanie Workerami i Modelami
+            </Typography>
+            <Typography variant="h6" component="h2" align="center" color="text.secondary" sx={{ mb: 4 }}>
+                Pobieraj i zarządzaj modelami na dostępnych workerach
             </Typography>
 
-            <Button
-                variant="outlined"
-                onClick={() => navigate('/')}
-                sx={{ mb: 1 }}
-            >
-                Powrót
-            </Button>
+            <Divider sx={{ width: '80%', mb: 4 }} />
 
-            <Box
+            <Paper
+                elevation={6}
                 sx={{
+                    p: 3,
+                    mb: 4,
+                    borderRadius: '12px',
+                    width: { xs: '100%', sm: '90%', md: '80%', lg: '70%' },
                     display: 'flex',
-                    alignItems: 'center',
-                    width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
-                    mb: 3,
-                    gap: 2,
+                    flexDirection: 'column',
+                    gap: 3,
+                    backgroundColor: theme.palette.background.paper,
                 }}
             >
                 <FormControl sx={{ minWidth: 120 }} size="small" disabled={fetchingWorkers}>
@@ -387,18 +407,19 @@ function WorkersPage() {
                 >
                     {isThisWorkerDownloading ? <MuiCircularProgress size={24} /> : "Pobierz model"}
                 </Button>
-            </Box>
+            </Paper>
 
-            <Box
+            <Paper
+                elevation={4}
                 sx={{
-                    width: { xs: '100%', sm: '80%', md: '70%', lg: '60%' },
-                    border: `1px solid ${theme.palette.divider}`,
-                    borderRadius: '4px',
-                    p: 2,
-                    mb: 3,
+                    p: 3,
+                    mb: 4,
+                    borderRadius: '12px',
+                    width: { xs: '100%', sm: '90%', md: '80%', lg: '70%' },
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
+                    backgroundColor: theme.palette.background.paper,
                 }}
             >
                 <Typography variant="h6" component="h2" gutterBottom sx={{ textAlign: 'center' }}>
@@ -443,7 +464,7 @@ function WorkersPage() {
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
                     Załadowane modele na workerze: {workerSpecificLoadedModels.join(', ') || 'Brak'}
                 </Typography>
-            </Box>
+            </Paper>
 
             <Dialog
                 open={openAlertDialog}
@@ -525,6 +546,24 @@ function WorkersPage() {
                     </Button>
                 </DialogActions>
             </Dialog>
+            <Tooltip title="Wróć do strony głównej">
+                <Fab
+                    color="primary"
+                    aria-label="home"
+                    sx={{
+                        position: 'fixed',
+                        bottom: 32,
+                        right: 32,
+                        boxShadow: theme.shadows[6],
+                        '&:hover': {
+                            boxShadow: theme.shadows[10],
+                        },
+                    }}
+                    onClick={handleGoHome}
+                >
+                    <HomeIcon fontSize="large" />
+                </Fab>
+            </Tooltip>
         </Container>
     );
 }
