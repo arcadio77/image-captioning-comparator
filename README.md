@@ -26,6 +26,38 @@ A distributed system designed to generate and compare image captions using state
 - Select target models
 - View generated captions in a clean UI
 
+## Model Testing
+<details>
+ <summary>Results of Model Testing</summary>
+  <h3>cnmoro/mini-image-captioning</h3>
+  <p>Smallest tested model (34.2M params). Extremely fast, though the captions often don't make sense.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/cnmoro--mini-image-captioning.png" />
+
+  <h3>HuggingFaceTB/SmolVLM-256M-Instruct</h3>
+  <p>Good results in most cases, but occasionally stops mid-sentence.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/HuggingFaceTB--SmolVLM-256M-Instruct.png" />
+
+  <h3>Salesforce/blip-image-captioning-base</h3>
+  <p>Efficient and compact. Produces short but relatively expressive descriptions.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/Salesforce--blip-image-captioning-base.png" />
+
+  <h3>microsoft/git-base</h3>
+  <p>Generates short and very generic captions that often lack detail.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/microsoft--git-base.png" />
+
+  <h3>microsoft/git-large</h3>
+  <p>Captures more detail than the smaller version, but still produces short captions.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/microsoft--git-large.png" />
+
+  <h3>nlpconnect/vit-gpt2-image-captioning</h3>
+  <p>Generates fairly detailed captions, but often hallucinates elements loosely related to the image.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/nlpconnect--vit-gpt2-image-captioning.png" />
+
+  <h3>noamrot/FuseCap_Image_Captioning</h3>
+  <p>Generates long, rich descriptions with impressive vocabulary and good speed, but often includes fabricated details and occasionally leaves captions unfinished.</p>
+  <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/noamrot--FuseCap_Image_Captioning.png" />
+</details>
+
 
 ## Tech Stack
 
@@ -124,4 +156,4 @@ Each worker exposes Prometheus-compatible metrics on port 8001 at the `/metrics`
 These metrics can be collected by Prometheus and visualized with Grafana.
 
 ## RabbitMQ architecture
-![RabbitMQ architecture](https://github.com/arcadio77/image-captioning-comparator/blob/main/rabbitmq_scheme.jpg)
+![RabbitMQ architecture](https://github.com/arcadio77/image-captioning-comparator/blob/main/images/rabbitmq_scheme.jpg)
