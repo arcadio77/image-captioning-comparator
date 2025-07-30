@@ -29,31 +29,31 @@ A distributed system designed to generate and compare image captions using state
 ## Model Testing
 <details>
  <summary>Results of Model Testing</summary>
-  <h3>cnmoro/mini-image-captioning</h3>
+  <h3><a href="https://huggingface.co/cnmoro/mini-image-captioning">cnmoro/mini-image-captioning</a></h3>
   <p>Smallest tested model (34.2M params). Extremely fast, though the captions often don't make sense.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/cnmoro--mini-image-captioning.png" />
 
-  <h3>HuggingFaceTB/SmolVLM-256M-Instruct</h3>
+  <h3><a href="https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct">HuggingFaceTB/SmolVLM-256M-Instruct</a></h3>
   <p>Good results in most cases, but occasionally stops mid-sentence.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/HuggingFaceTB--SmolVLM-256M-Instruct.png" />
 
-  <h3>Salesforce/blip-image-captioning-base</h3>
+  <h3><a href="https://huggingface.co/Salesforce/blip-image-captioning-base">Salesforce/blip-image-captioning-base</a></h3>
   <p>Efficient and compact. Produces short but relatively expressive descriptions.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/Salesforce--blip-image-captioning-base.png" />
 
-  <h3>microsoft/git-base</h3>
+  <h3><a href="https://huggingface.co/microsoft/git-base">microsoft/git-base</a></h3>
   <p>Generates short and very generic captions that often lack detail.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/microsoft--git-base.png" />
 
-  <h3>microsoft/git-large</h3>
+  <h3><a href="https://huggingface.co/microsoft/git-large">microsoft/git-large</a></h3>
   <p>Captures more detail than the smaller version, but still produces short captions.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/microsoft--git-large.png" />
 
-  <h3>nlpconnect/vit-gpt2-image-captioning</h3>
+  <h3><a href="https://huggingface.co/nlpconnect/vit-gpt2-image-captioning">nlpconnect/vit-gpt2-image-captioning</a></h3>
   <p>Generates fairly detailed captions, but often hallucinates elements loosely related to the image.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/nlpconnect--vit-gpt2-image-captioning.png" />
 
-  <h3>noamrot/FuseCap_Image_Captioning</h3>
+  <h3><a href="https://huggingface.co/noamrot/FuseCap_Image_Captioning">noamrot/FuseCap_Image_Captioning</a></h3>
   <p>Generates long, rich descriptions with impressive vocabulary and good speed, but often includes fabricated details and occasionally leaves captions unfinished.</p>
   <img src="https://github.com/arcadio77/image-captioning-comparator/blob/main/images/noamrot--FuseCap_Image_Captioning.png" />
 </details>
