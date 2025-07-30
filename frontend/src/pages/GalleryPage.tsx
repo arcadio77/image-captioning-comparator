@@ -49,7 +49,7 @@ function GalleryPage() {
     const exportToCsv = () => {
         if (images.length === 0) return;
 
-        let csvContent = "Nazwa Zdjęcia,Model,Opis\n";
+        let csvContent = "Nazwa Zdjęcia;Model;Opis\n";
 
         images.forEach(image => {
             image.captions.forEach(caption => {
@@ -57,7 +57,7 @@ function GalleryPage() {
                 const modelName = `"${caption.model.replace(/"/g, '""')}"`;
                 const description = `"${caption.text.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
 
-                csvContent += `${fileName},${modelName},${description}\n`;
+                csvContent += `${fileName};${modelName};${description}\n`;
             });
         });
 
