@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useMemo, useState} from 'react';
 import {
     Box,
     Button,
@@ -172,20 +172,6 @@ function App() {
         );
     }, [fetchedModels, fetchedModelFilterText]);
 
-    const imageUrls = useMemo(() => {
-        return images.map(image => ({
-            name: image.file.name,
-            size: image.file.size,
-            url: URL.createObjectURL(image.file)
-        }));
-    }, [images]);
-
-    useEffect(() => {
-        return () => {
-            imageUrls.forEach(img => URL.revokeObjectURL(img.url));
-        };
-    }, [imageUrls]);
-
     return (
         <Container
             maxWidth="lg"
@@ -346,27 +332,27 @@ function App() {
                     label="Prześlij zdjęcia"
                     loading={loading}
                 />
-                {imageUrls.length > 0 && (
+                {images.length > 0 && (
                     <Box mt={3} sx={{ width: '100%', textAlign: 'center' }}>
                         <Typography variant="subtitle1" gutterBottom color="text.secondary" sx={{ mb: 2 }}>
-                            Wybrane zdjęcia ({imageUrls.length}):
+                            Wybrane zdjęcia ({images.length}):
                         </Typography>
                         <Grid container spacing={1} justifyContent="center">
-                            {imageUrls.map((img) => (
-                                <Grid item key={img.name + img.size} sx={{ display: 'flex' }} {...({ component: "div" } as any)}>
+                            {images.map((img) => (
+                                <Grid item key={img.file.name + img.file.size} sx={{ display: 'flex' }} {...({ component: "div" } as any)}>
                                     <Chip
-                                        label={img.name.length > 20 ? img.name.substring(0, 17) + '...' : img.name}
+                                        label={img.file.name.length > 20 ? img.file.name.substring(0, 17) + '...' : img.file.name}
                                         size="medium"
                                         onDelete={() => removeImage(
                                             images.find(
-                                                originalImg => originalImg.file.name === img.name && originalImg.file.size === img.size
+                                                originalImg => originalImg.file.name === img.file.name && originalImg.file.size === img.file.size
                                             )?.file || new File([], '')
                                         )}
                                         disabled={loading}
                                         avatar={
                                             <img
-                                                src={img.url}
-                                                alt={img.name}
+                                                src={img.previewUrl}
+                                                alt={img.file.name}
                                                 style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }}
                                             />
                                         }

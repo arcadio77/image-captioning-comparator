@@ -1,4 +1,4 @@
-import React, { StrictMode, useState, useMemo } from 'react';
+import { StrictMode, useState, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
@@ -14,43 +14,38 @@ import WorkersPage from "./pages/WorkersPage.tsx";
 import { AppProvider } from "./contexts/AppProvider.tsx";
 import {WorkersProvider} from "./contexts/WorkersProvider.tsx";
 
-const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
-
 export default function Root() {
     const [mode, setMode] = useState<'light' | 'dark'>('light');
 
-    const colorMode = useMemo(() => ({
-            toggleColorMode: () => {
-                setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
-            },
-        }), []);
+    const toggleColorMode = () => {
+        setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+    };
 
     const theme = useMemo(() =>
-            createTheme({
-                palette: {
-                    mode,
-                },
-            }), [mode]);
+        createTheme({
+            palette: {
+                mode,
+            },
+        }), [mode]);
 
     return (
         <StrictMode>
-            <ColorModeContext.Provider value={colorMode}>
-                <ThemeProvider theme={theme}>
-                    <CssBaseline />
-                    <BrowserRouter>
-                        <Box
-                            sx={{
-                                position: 'fixed',
-                                top: 16,
-                                right: 16,
-                                zIndex: 1000,
-                            }}
-                        >
-                            <IconButton sx={{ ml: 1 }} onClick={colorMode.toggleColorMode} color="inherit">
-                                {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
-                            </IconButton>
-                        </Box>
-                        <AppProvider>
+            <ThemeProvider theme={theme}>
+                <CssBaseline />
+                <BrowserRouter>
+                    <Box
+                        sx={{
+                            position: 'fixed',
+                            top: 16,
+                            right: 16,
+                            zIndex: 1000,
+                        }}
+                    >
+                        <IconButton sx={{ ml: 1 }} onClick={toggleColorMode} color="inherit">
+                            {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+                        </IconButton>
+                    </Box>
+                    <AppProvider>
                         <WorkersProvider>
                             <Routes>
                                 <Route path="/" element={<App />} />
@@ -58,10 +53,9 @@ export default function Root() {
                                 <Route path="/workers" element={<WorkersPage />} />
                             </Routes>
                         </WorkersProvider>
-                        </AppProvider>
-                    </BrowserRouter>
-                </ThemeProvider>
-            </ColorModeContext.Provider>
+                    </AppProvider>
+                </BrowserRouter>
+            </ThemeProvider>
         </StrictMode>
     );
 }
