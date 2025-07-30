@@ -122,3 +122,6 @@ Each worker exposes Prometheus-compatible metrics on port 8001 at the `/metrics`
 * `worker_ram_usage_percent` - RAM usage percent of the worker process
 
 These metrics can be collected by Prometheus and visualized with Grafana.
+
+## RabbitMQ architecture
+![RabbitMQ architecture](https://github.com/arcadio77/image-captioning-comparator/blob/main/rabbitmq_scheme.jpg)
